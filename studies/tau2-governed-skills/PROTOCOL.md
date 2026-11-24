@@ -302,3 +302,33 @@ human seat.
 - **Fact for the guardrail review:** in τ² telecom every device tool belongs to the customer. That's 30 tools, including `check_status_bar`, `toggle_airplane_mode`, `reset_apn_settings` and `can_send_mms`.
   - The agent has only account tools: customer lookup, line suspend/resume, roaming enable/disable, `get_data_usage`, `refuel_data`, bills and payment requests, and transfer.
   - Haiku's `use-device-tools-not-manual-steps` guardrail tells the agent these device tools are its own.
+
+### Gate results (train), recorded 2026-11-24
+
+- **Haiku gate-only (tel-h), round 1: rejected.**
+  - The candidate scored 0.360. The fresh re-measure of the current (empty) catalog scored 0.703. Delta −0.342; floor 0.058.
+  - The wrong guardrail was never promoted. Rejecting the batch also discarded `data-limit-refuel-check`, which the reviewed arm kept.
+- **Haiku gate-only (tel-h), round 2: the improver repeated the misreading.**
+  - The two new procedures tell the agent to call `reboot_device`, `check_apn_settings`, `grant_app_permission` and `can_send_mms` itself. All four are customer tools.
+  - The round-1 rejection was in the edit log the improver read, and it still repeated the error.
+  - First 75 candidate episodes: 0.03, against a baseline of 0.44 on the same conversations.
+  - A gate catches such a batch only after measuring it for a full round. A reviewer catches it on reading.
+- **Correction to an earlier note: Haiku does call `get_skill`.**
+  - An earlier tally read a field that doesn't exist (`get_skill` instead of `get_skill_calls`). That made it look like no episode fetched a skill.
+  - Real counts:
+
+    | Run, round | Episodes that fetched a skill |
+    |---|---|
+    | tel-h r1 | 184/222 |
+    | tel-h r2 | 73/75 |
+    | tel-hr r1 | 182/204 |
+    | tel-o r1 | 7/222 |
+
+  - Haiku fetches procedures and checklists named in the `agent_startup` index. It rarely fetches guardrails, because their text is already inlined.
+  - Opus's round-1 items were all guardrails, so its run barely needs `get_skill`.
+  - Consequence: a wrong procedure is fetched and followed. That's how tel-h r2 falls to 0.03.
+- **Run-to-run drift is larger than the round-0 noise floor.**
+  - The same empty catalog re-measured hours later scored 0.703 against 0.626 in tel-h, and 0.66 against 0.70 in tel-o.
+  - The floor (0.058) comes from within-run trial SD, which understates the difference between sessions.
+  - The gate's comparison against a fresh re-measure (`--remeasure-current`) is what keeps this drift from passing as a gain.
+  - TEST arms should run interleaved, not one after another.
