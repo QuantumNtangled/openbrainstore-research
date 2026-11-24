@@ -30,6 +30,13 @@ def main() -> None:
                     help="re-run the current catalog each round instead of reusing its last score")
     sp.add_argument("--improver-model", default=DEFAULT_MODEL)
     sp.add_argument("--improver-effort", default="medium")
+    sp.add_argument("--review", action="store_true",
+                    help="reviewed arm: pause each round for a human approve/edit/reject decision "
+                         "per proposal (rounds/<r>/review_decisions.json) before the gate")
+    sp.add_argument("--reviewer", default="human:reviewer", help="recorded as who reviewed")
+    sp.add_argument("--seed-from", default=None,
+                    help="another learn run with the same config: reuse its round-0 baseline and "
+                         "its round-1 improver proposals, so this run starts from the same point")
 
     sp = sub.add_parser("evaluate", help="arms A-D on the TEST split")
     add_common_args(sp)

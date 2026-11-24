@@ -47,6 +47,92 @@ def _pick_failures(episodes: list[dict], cap: int) -> list[dict]:
     return (first + rest)[:cap]
 
 
+def _seed_from(src_ldir: Path, ldir: Path, state_path: Path, state: dict, trials: int) -> dict:
+    """Start this run where another one started: the same round-0 baseline episodes and
+    the same round-1 proposals (its cached improver output). Copies, never moves."""
+    import shutil
+    if state.get("seeded_from"):
+        return state
+    src_state = read_json(src_ldir / "state.json")
+    if not src_state or "r0" not in src_state:
+        raise SystemExit(f"--seed-from: {src_ldir} has no finished round 0 yet")
+    if src_state.get("trials") != trials:
+        raise SystemExit("--seed-from: the source run used a different --trials")
+    src_r0, dst_r0 = src_ldir / "rounds" / "r0", ldir / "rounds" / "r0"
+    if not dst_r0.exists():
+        shutil.copytree(src_r0, dst_r0)
+    src_imp = src_ldir / "rounds" / "r1" / "improver_output.json"
+    if src_imp.exists():
+        (ldir / "rounds" / "r1").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_imp, ldir / "rounds" / "r1" / "improver_output.json")
+    for k in ("train_ids", "r0"):
+        if k in src_state:
+            state[k] = src_state[k]
+    # start from the source's baseline, not wherever the source has got to since
+    state["current"] = {"round": "r0", "score": src_state["r0"]["score"]}
+    state["seeded_from"] = src_ldir.parent.name
+    write_json(state_path, state)
+    return state
+
+
+def _review(rdir: Path, r: int, proposals: list[dict], rows: list[dict], drafts: list[tuple],
+            canon: "ObsStore", cur_score, floor, reviewer: str):
+    """The human seat. Writes review.md and a decisions template once, and returns None
+    until every proposal that reached the gate has a decision. Then it applies them:
+    approve keeps the draft, reject rejects it, edit proposes the edited text as a new
+    version (the old draft is rejected as superseded). Returns (drafts, rows)."""
+    md_path, dec_path = rdir / "review.md", rdir / "review_decisions.json"
+    by_slug = {p.get("slug"): p for p in proposals}
+    gated = [row for row in rows if "verdict" not in row and row.get("ref")]
+    if not md_path.exists():
+        lines = [f"# Review: round {r}", "",
+                 f"Current train score {cur_score:.3f}; the gate needs a gain above {floor:.3f}.",
+                 "For each proposal decide: approve, reject, or edit (give the replacement text).",
+                 "Decisions go in review_decisions.json next to this file.", ""]
+        for row in rows:
+            p = by_slug.get(row["slug"], {})
+            lines += [f"## {row['slug']} ({row.get('kind')})", "",
+                      f"**Title:** {row.get('title')}", "",
+                      f"**When to use:** {row.get('when_to_use')}", "",
+                      f"**Improver's hypothesis:** {row.get('hypothesis')}", ""]
+            if "verdict" in row:
+                lines += [f"**Already screened out:** {row['verdict']} (no decision needed)", ""]
+            lines += ["**Body:**", "", "```markdown", (p.get("body") or "").strip(), "```", ""]
+        md_path.write_text("\n".join(lines), encoding="utf-8")
+        template = {row["slug"]: {"decision": None, "note": "", "title": None, "when_to_use": None,
+                                  "body": None} for row in gated}
+        write_json(rdir / "review_template.json", {"reviewer": reviewer, "decisions": template})
+    decisions = (read_json(dec_path) or {}).get("decisions") or {}
+    missing = [row["slug"] for row in gated
+               if (decisions.get(row["slug"]) or {}).get("decision") not in ("approve", "reject", "edit")]
+    if missing:
+        return None
+    gated_slugs = {row["slug"] for row in gated}
+    ver = {slug: v for slug, v in drafts}
+    new_drafts = []
+    for row in rows:
+        if row["slug"] not in gated_slugs:
+            continue
+        d = decisions[row["slug"]]
+        row["review"] = {"decision": d["decision"], "note": d.get("note", ""), "by": reviewer}
+        slug, version = row["slug"], ver[row["slug"]]
+        if d["decision"] == "reject":
+            canon.reject(slug, version, by=reviewer)
+            row["verdict"] = "rejected-review"
+        elif d["decision"] == "edit":
+            p = by_slug.get(slug, {})
+            res = canon.propose(slug=slug, title=d.get("title") or row["title"],
+                                when_to_use=d.get("when_to_use") or row["when_to_use"],
+                                body=d.get("body") or p.get("body") or "", kind=row["kind"],
+                                evidence=row.get("evidence"))
+            canon.reject(slug, version, by=f"{reviewer}:superseded-by-edit")
+            row["ref"], row["edited"] = res["ref"], True
+            new_drafts.append((slug, _version(res["ref"])))
+        else:
+            new_drafts.append((slug, version))
+    return new_drafts, rows
+
+
 def cmd_learn(args) -> None:
     h = build_harness(args, improver_model=args.improver_model, improver_effort=args.improver_effort)
     from tau2.runner import build_environment
@@ -54,6 +140,9 @@ def cmd_learn(args) -> None:
     ldir = h.run_dir / "learn"
     state_path = ldir / "state.json"
     state = read_json(state_path, {}) or {}
+    if getattr(args, "seed_from", None):
+        state = _seed_from(h.run_dir.parent / args.seed_from / "learn", ldir, state_path, state,
+                           args.trials)
     train = load_split_tasks(args.domain, "train", limit=args.train_limit, seed=args.sample_seed,
                              only=args.task_ids)
     train_ids = [t.id for t in train]
@@ -184,8 +273,28 @@ def cmd_learn(args) -> None:
             print(f"round {r}: no clean proposals ({len(proposals)} screened out)", flush=True)
             continue
         # drafts exist now: checkpoint them so a resumed run measures these, not new copies
-        state[tag] = {"pending": {"drafts": [list(d) for d in drafts], "rows": rows}}
+        reviewed = bool((pending or {}).get("reviewed"))
+        state[tag] = {"pending": {"drafts": [list(d) for d in drafts], "rows": rows,
+                                  "reviewed": reviewed}}
         write_json(state_path, state)
+        if getattr(args, "review", False) and not reviewed:
+            out = _review(rdir, r, cached["proposals"], rows, drafts, canon, cur_score, floor,
+                          args.reviewer)
+            if out is None:
+                print(f"round {r}: awaiting review -> {rdir / 'review.md'} "
+                      f"(write {rdir / 'review_decisions.json'}, then rerun)", flush=True)
+                return
+            drafts, rows = out
+            state[tag] = {"pending": {"drafts": [list(d) for d in drafts], "rows": rows,
+                                      "reviewed": True}}
+            write_json(state_path, state)
+            if not drafts:
+                for row in rows:
+                    append_jsonl(log_path, row)
+                state[tag] = {"verdict": "no-candidate", "proposals": len(proposals), "reviewed": True}
+                write_json(state_path, state)
+                print(f"round {r}: every proposal rejected in review", flush=True)
+                continue
         eps = measure(tag, canon, sandbox_drafts=drafts)
         cand = mean_success(eps)
         before = cur_score
@@ -194,10 +303,11 @@ def cmd_learn(args) -> None:
         delta = (cand or 0.0) - (before or 0.0)
         passed = delta > floor
         for slug, version in drafts:
+            gate_by = f"{args.reviewer}+study:gate" if getattr(args, "review", False) else "study:gate"
             if passed:
-                canon.promote(slug, version, by="study:gate")
+                canon.promote(slug, version, by=gate_by)
             else:
-                canon.reject(slug, version, by="study:gate")
+                canon.reject(slug, version, by=gate_by)
         for row in rows:
             if "verdict" not in row:      # went through the gate (screened-out rows keep theirs)
                 row.update(verdict="promoted" if passed else "rejected-gate",

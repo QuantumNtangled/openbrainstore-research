@@ -285,3 +285,20 @@ are written when a proposal is made, before the gate's result is known.
   - Record each batch's gate verdict here once known, along with whether this guardrail was part of a promoted batch.
 
 Possible follow-up arm: **C-reviewed**. Same as C, but every proposal also passes a human review step (approve, reject or edit) before promotion. Compare it with gate-only C on TEST to measure what governance adds beyond automatic selection.
+
+### Reviewed arm (C-reviewed), set up 2026-11-24
+
+`learn --review --seed-from tel-h` starts from the gate-only Haiku run's round-0 baseline and
+uses its exact round-1 proposals, with no new improver call, so the only difference is the
+human seat.
+- **Each round:** the run writes `rounds/<r>/review.md` and stops. The reviewer records approve, reject or edit for each proposal that passed the automatic screens, in `review_decisions.json`.
+- **Gate:** the reviewed batch then goes through the same gate. Promotions are recorded as `human:reviewer+study:gate`.
+- **What the reviewer sees:** the proposal, the improver's hypothesis, and the domain's own documentation, as a reviewer would in OpenBrainStore's Catalog tab.
+- **Automatic screens stay binding:** the reviewer can't override the leakage screen, because it protects the test set.
+
+- **2026-11-24, telecom round 1: the automatic leakage screen rejected Haiku's `mms-failure-triage-order` checklist** for containing `4g_5g_preferred`.
+  - That string is a value of the user's `set_network_mode_preference` tool, which also appears in a test task's expected actions. It's domain vocabulary, not a leak, so this is a false positive of a blunt automatic filter.
+  - It stays rejected in every arm, so the arms remain comparable.
+- **Fact for the guardrail review:** in τ² telecom every device tool belongs to the customer. That's 30 tools, including `check_status_bar`, `toggle_airplane_mode`, `reset_apn_settings` and `can_send_mms`.
+  - The agent has only account tools: customer lookup, line suspend/resume, roaming enable/disable, `get_data_usage`, `refuel_data`, bills and payment requests, and transfer.
+  - Haiku's `use-device-tools-not-manual-steps` guardrail tells the agent these device tools are its own.
