@@ -268,3 +268,20 @@ TEST episode. Commit this section before running `evaluate`.*
   includes 0 on every domain, or C − D < 0):
 - Domains, k, and user-simulator model actually used:
 - Date and commit of this entry:
+
+## 14. Governance observations (for the report)
+
+The study's gate promotes automatically (`by=study:gate`). The product puts a person
+in that seat: in OpenBrainStore's Catalog tab, a human approves or rejects each
+proposal, with its evidence in front of them. This log records cases where an
+automatic gate and a human reviewer could reasonably decide differently. Entries
+are written when a proposal is made, before the gate's result is known.
+
+- **2026-11-24, telecom round 1: the two improvers read the same failures in opposite directions.**
+  - Haiku proposed the guardrail `use-device-tools-not-manual-steps`: "Do not tell the customer to perform device checks that your tools can perform."
+  - Opus proposed the guardrail `customer-runs-device-checks-no-early-transfer`: "The customer can run every device check and fix; never transfer because you 'cannot see the phone'."
+  - In τ² telecom the device tools belong to the user (dual control). The agent can only direct the customer. Haiku's premise therefore misreads the environment, and Opus's matches it.
+  - The gate scores a proposal batch as a whole, so a batch can pass while one of its rules is wrong. A reviewer who knows the domain would reject or rewrite that rule.
+  - Record each batch's gate verdict here once known, along with whether this guardrail was part of a promoted batch.
+
+Possible follow-up arm: **C-reviewed**. Same as C, but every proposal also passes a human review step (approve, reject or edit) before promotion. Compare it with gate-only C on TEST to measure what governance adds beyond automatic selection.
