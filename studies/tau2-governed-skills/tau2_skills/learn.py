@@ -22,7 +22,7 @@ from .common import append_jsonl, read_json, read_jsonl, write_json
 from .episode import ArmSetup
 from .harness import build_harness
 from .improver import KINDS, build_prompt, call as call_improver
-from .leakage import build_denylist, screen, test_contamination
+from .leakage import build_denylist, redact, screen, test_only_denylist
 from .metrics import mean_success, per_trial_means, trial_sd, valid
 from .obs import ObsStore
 from .splits import load_split_tasks
@@ -124,7 +124,15 @@ def cmd_learn(args) -> None:
         edit_log = read_jsonl(log_path)
         prompt = build_prompt(args.domain, policy, canon.promoted_markdown(), edit_log, failures,
                               args.max_edits)
-        leaked = test_contamination(prompt, all_test, all_train, policy)
+        # Mask TEST-only strings (shared DB values a train episode looked up), then
+        # re-check: the improver must never see one.
+        test_dl = test_only_denylist(all_test, all_train, policy)
+        prompt, n_redacted = redact(prompt, test_dl)
+        state.setdefault("redactions", {})[tag] = n_redacted
+        write_json(state_path, state)
+        if n_redacted:
+            print(f"improver prompt: masked {n_redacted} TEST-only string(s)")
+        leaked = screen(prompt, test_dl, generic=False)
         if leaked:
             raise SystemExit(f"refusing to call the improver: its prompt contains TEST-only strings {leaked[:5]}")
         out_path = rdir / "improver_output.json"

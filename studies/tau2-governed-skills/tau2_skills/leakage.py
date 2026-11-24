@@ -158,3 +158,23 @@ def test_only_denylist(test_tasks, train_tasks, allowed_text: str) -> Denylist:
 
 def test_contamination(prompt: str, test_tasks, train_tasks, policy: str) -> list[str]:
     return screen(prompt, test_only_denylist(test_tasks, train_tasks, policy), generic=False)
+
+
+def redact(text: str, dl: Denylist, placeholder: str = "<redacted>") -> tuple[str, int]:
+    """Replace every task-specific string of `dl` in `text` (same matching as screen,
+    without the generic patterns). Train trajectories legitimately contain shared
+    database values (a product id the agent looked up) that a TEST task also names;
+    the improver never needs specific ids, so they are masked instead of aborting."""
+    count = 0
+
+    def sub(rx, s):
+        nonlocal count
+        out, n = rx.subn(placeholder, s)
+        count += n
+        return out
+
+    for lit in sorted(dl.literals, key=len, reverse=True):
+        text = sub(re.compile(r"(?<![A-Za-z0-9_])" + re.escape(lit) + r"(?![A-Za-z0-9_])", re.I), text)
+    for name in sorted(dl.names, key=len, reverse=True):
+        text = sub(re.compile(r"\b" + re.escape(name) + r"\b"), text)
+    return text, count

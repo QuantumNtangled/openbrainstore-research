@@ -52,3 +52,16 @@ def test_leakage_screen():
     hits = screen("Look up Kovacs (mei_kovacs_8020) and order #W6390527 in 28236; see task 7.", dl)
     for s in ("Kovacs", "mei_kovacs_8020", "#W6390527", "28236", "task 7"):
         assert any(s.lower() in h.lower() for h in hits), (s, hits)
+
+
+def test_redact_masks_test_only_strings_and_screen_comes_back_clean():
+    from tau2_skills.leakage import Denylist, redact, screen
+    dl = Denylist()
+    dl.literals = {"3821016478", "#w1234567"}
+    dl.names = {"Mia", "Garcia"}  # single name tokens, as task_denylist builds them
+    text = "Looked up product 3821016478 for Mia Garcia; order #W1234567. Keep 38210164780."
+    out, n = redact(text, dl)
+    assert n == 4
+    assert "3821016478 " not in out and "Mia" not in out and "Garcia" not in out and "#W1234567" not in out
+    assert "38210164780" in out          # boundary: a longer number is not touched
+    assert screen(out, dl, generic=False) == []
