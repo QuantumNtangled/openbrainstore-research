@@ -1,0 +1,8 @@
+# Benchmark checkout, virtualenvs and every run output stay out of git.
+vendor/
+.venv/
+runs/
+results/
+__pycache__/
+*.pyc
+.pytest_cache/

@@ -1,0 +1,110 @@
+"""python -m tau2_skills <command> ...   (see ../README.md)"""
+
+import argparse
+
+from .common import DEFAULT_MODEL, ensure_utf8_mode, quiet_tau2_logs
+
+
+def main() -> None:
+    ensure_utf8_mode()
+    quiet_tau2_logs()          # before tau2 is imported: it logs its registry at import time
+    p = argparse.ArgumentParser(prog="tau2_skills")
+    sub = p.add_subparsers(dest="command", required=True)
+    from .harness import add_common_args
+
+    def task_args(sp):
+        sp.add_argument("--task-ids", nargs="*", default=None, help="explicit task ids (must be in the split)")
+        sp.add_argument("--sample-seed", type=int, default=0, help="seed for --*-limit sampling")
+
+    sp = sub.add_parser("learn", help="learning loop on the TRAIN split")
+    add_common_args(sp)
+    task_args(sp)
+    sp.add_argument("--train-limit", type=int, default=None, help="use a seeded sample of N train tasks")
+    sp.add_argument("--trials", type=int, default=3, help="trials per train task per measurement (T)")
+    sp.add_argument("--rounds", type=int, default=3)
+    sp.add_argument("--max-edits", type=int, default=3, help="proposals considered per round")
+    sp.add_argument("--max-failures", type=int, default=8, help="failed episodes shown to the improver")
+    sp.add_argument("--gate-z", type=float, default=1.645)
+    sp.add_argument("--min-delta", type=float, default=0.02)
+    sp.add_argument("--remeasure-current", action="store_true",
+                    help="re-run the current catalog each round instead of reusing its last score")
+    sp.add_argument("--improver-model", default=DEFAULT_MODEL)
+    sp.add_argument("--improver-effort", default="medium")
+
+    sp = sub.add_parser("evaluate", help="arms A-D on the TEST split")
+    add_common_args(sp)
+    task_args(sp)
+    sp.add_argument("--arms", default="A,B,C,D")
+    sp.add_argument("--k", type=int, default=4, help="trials per test task")
+    sp.add_argument("--test-limit", type=int, default=None)
+    sp.add_argument("--catalog", default=None, help="OBS data dir of the learned catalog "
+                    "(default: runs/<run>/learn/obs)")
+    sp.add_argument("--recall", action="store_true", help="also offer OBS recall in arms B and C")
+    sp.add_argument("--arm-order", default="interleave", choices=["interleave", "sequential"])
+
+    sp = sub.add_parser("summarize", help="rebuild results/<run>/summary.* from episode files")
+    sp.add_argument("--run", required=True)
+    sp.add_argument("--arms", default="A,B,C,D")
+    sp.add_argument("--k", type=int, default=4)
+    from .common import RUNS_DIR
+    sp.add_argument("--runs-dir", default=str(RUNS_DIR))
+
+    sp = sub.add_parser("episode", help="one arm on explicit tasks (smoke tests, debugging)")
+    add_common_args(sp)
+    sp.add_argument("--split", default="train", choices=["train", "test"])
+    sp.add_argument("--task-ids", nargs="+", default=None)
+    sp.add_argument("--limit", type=int, default=None,
+                    help="seeded sample of N tasks (same sample as learn --train-limit N)")
+    sp.add_argument("--sample-seed", type=int, default=0)
+    sp.add_argument("--arm", default="C", choices=["A", "B", "C", "D", "a", "b", "c", "d"])
+    sp.add_argument("--trials", type=int, default=1)
+    sp.add_argument("--catalog", default=None, help="OBS data dir to serve (e.g. runs/<run>/learn/obs)")
+    sp.add_argument("--catalog-import", default=None, help="directory with INDEX.md + item files")
+
+    sp = sub.add_parser("estimate", help="token / invocation / API-equivalent cost estimate")
+    sp.add_argument("--cc-overhead", type=int, default=6_000,
+                    help="Claude Code's own prompt tokens per agent call (measure in the pilot)")
+    sp.add_argument("--trials", type=int, default=3)
+    sp.add_argument("--rounds", type=int, default=3)
+    sp.add_argument("--k", type=int, default=4)
+    sp.add_argument("--agent-model", default=DEFAULT_MODEL)
+    sp.add_argument("--improver-model", default=DEFAULT_MODEL)
+
+    sp = sub.add_parser("splits", help="print the official split counts")
+
+    args = p.parse_args()
+    from .runner import PlanLimitStop
+    try:
+        dispatch(args)
+    except PlanLimitStop as e:
+        print(f"\nSTOPPED: {e}\nEvery finished episode is checkpointed. Rerun the same command to resume.")
+        raise SystemExit(3)
+
+
+def dispatch(args) -> None:
+    if args.command == "learn":
+        from .learn import cmd_learn
+        cmd_learn(args)
+    elif args.command == "evaluate":
+        from .evaluate import cmd_evaluate
+        cmd_evaluate(args)
+    elif args.command == "summarize":
+        from .evaluate import cmd_summarize
+        cmd_summarize(args)
+    elif args.command == "episode":
+        from .single import cmd_episode
+        cmd_episode(args)
+    elif args.command == "estimate":
+        from .estimate import cmd_estimate
+        cmd_estimate(args)
+    elif args.command == "splits":
+        from .common import TAU2_COMMIT, TAU2_TAG
+        from .splits import official_split
+        print(f"tau2-bench {TAU2_TAG} ({TAU2_COMMIT})")
+        for d in ("retail", "airline", "telecom"):
+            sp_ = official_split(d)
+            print(d, {k: len(v) for k, v in sp_.items()} if sp_ else "no official split")
+
+
+if __name__ == "__main__":
+    main()

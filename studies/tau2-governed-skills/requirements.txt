@@ -1,0 +1,6 @@
+# Installed by setup.ps1 from this directory (paths are relative to it).
+-e ./vendor/tau2-bench
+-e ../..
+# tau2 imports audioop, which Python 3.13 removed
+audioop-lts; python_version >= "3.13"
+pytest>=8
