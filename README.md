@@ -14,7 +14,7 @@ these studies are real coding agents, not API loops: the harness runs **Claude C
 
 | study | question | status |
 |---|---|---|
-| [tau2-governed-skills](studies/tau2-governed-skills) | When an agent writes its own skills, who should approve them: a score check, a person, or another AI? Measured on τ²-bench telecom with Claude Haiku 5.5. | practice results final; held-out test in progress |
+| [tau2-governed-skills](studies/tau2-governed-skills) | Self-improving agents: how to govern the skills an agent writes from its own failures. Auto-approval, a score check, a human reviewer, an AI reviewer and a stronger writer, compared on τ²-bench telecom with Claude Haiku 5.5. | final |
 
 ## Running a study
 

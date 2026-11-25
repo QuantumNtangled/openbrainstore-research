@@ -1,10 +1,12 @@
-# Who should approve an AI agent's new skills? (τ²-bench telecom)
+# How to govern the skills agents teach themselves (τ²-bench telecom)
 
-Claude Haiku 5.5 works a simulated phone-company help desk, writes itself new skills from
-its failures, and those skills go live under one of four approval paths: an automatic score
-check only, a human reviewer, an AI reviewer (Claude Opus 5.5), or a stronger model writing
-the skills. The design, the pre-registered predictions and every result are in
-[PROTOCOL.md](PROTOCOL.md). This file is how to run it.
+Claude Haiku 5.5 works a simulated phone-company help desk and writes itself new skills from
+its own failed conversations. Those skills go live under one of four approval paths: an
+automatic score check only, a human reviewer, an AI reviewer (Claude Opus 5.5), or a stronger
+model writing the skills. On the 40 held-out tasks, the governed skills raised the agent's
+success rate from 77.5% to between 91.7% and 98.3%; approved automatically, its first batch
+would have cut its practice score from 70% to 36%. The design, the pre-registered predictions
+and every result are in [PROTOCOL.md](PROTOCOL.md). This file is how to run it.
 
 Every model in the study, the agent, the simulated customer, the skill writer and the AI
 reviewer, is **Claude Code running headless** (`claude -p`). The harness starts one Claude
