@@ -332,3 +332,27 @@ human seat.
   - The floor (0.058) comes from within-run trial SD, which understates the difference between sessions.
   - The gate's comparison against a fresh re-measure (`--remeasure-current`) is what keeps this drift from passing as a gain.
   - TEST arms should run interleaved, not one after another.
+
+### Later rounds (train), recorded 2026-11-24 evening
+
+- **Gate only, Haiku (`tel-h`), round 2: rejected.** The candidate scored 0.450, against a re-measure of 0.694. Round 3 is running.
+- **Opus teacher (`tel-o`): finished.**
+  - Round 2 was rejected at the ceiling: 0.995 against 0.973, a gain of 0.023, under the 0.069 floor. Its rejected items were a procedure making roaming two-sided (line and phone) and a guardrail on reading device checks.
+  - In round 3 the only proposal, a pre-transfer checklist, was screened out for `4g_5g_preferred`.
+  - Final promoted set: the two round-1 guardrails. Train score 0.977.
+- **Reviewed (`tel-hr`), round 1: PROMOTED.**
+  - The candidate scored 0.896, against a re-measure of 0.676 (gain +0.221, floor 0.058).
+  - It was recorded as `human:reviewer+study:gate`.
+- **`tel-hr` round 2: no clean proposals.**
+  - The only proposal, a pre-transfer MMS checklist, was screened out for `4g_5g_preferred` and also for `transfer_to_human_agents`.
+  - `transfer_to_human_agents` is the agent's own transfer tool, so this was a second false positive.
+- **`tel-hr` round 3: edited by the reviewer.**
+  - The proposal was Haiku's `mms-check-order-and-gate` checklist.
+  - Checked against `tech_support_manual.md`, it was correct, apart from two gaps:
+    - It checked roaming only on the line. The manual also requires the phone's Data Roaming switch to be ON when abroad (manual §"Addressing Data Roaming Problems").
+    - It didn't say that the phone steps are the customer's to run.
+  - The reviewer chose to edit both. The edited text passed the same leakage screen before it was saved.
+- **A string screen can be worded around.**
+  - The round-3 proposal wrote "4G/5G preferred mode" instead of the literal enum value, and passed.
+  - Here the value is harmless domain vocabulary, but this shows the screen catches exact strings, not meaning.
+  - A reviewer, or a semantic check, covers what a string match misses.
