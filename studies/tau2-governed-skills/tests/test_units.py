@@ -84,25 +84,16 @@ def test_redact_masks_test_only_strings_and_screen_comes_back_clean():
     assert screen(out, dl, generic=False) == []
 
 
-def test_hosted_obs_never_holds_the_key(monkeypatch):
+def test_hosted_obs_never_holds_the_key():
     """--obs-url: the agent's MCP config carries a ${VAR} placeholder that Claude Code expands
-    from its environment, so the key never lands in a run's files; only A and C run hosted."""
-    from types import SimpleNamespace
-
-    from tau2_skills.evaluate import hosted_arm
+    from its environment, so a key never lands in a run's files; each setup has its own slot."""
+    from tau2_skills.hosted import _fingerprint, slot_key_env, slot_profile, slot_slug
     from tau2_skills.obs import HOSTED_URL, obs_http_server
 
-    cfg = obs_http_server(HOSTED_URL, "OBS_AGENT_KEY")
-    assert cfg == {"type": "http", "url": "https://openbrainstore.com/mcp",
-                   "headers": {"Authorization": "Bearer ${OBS_AGENT_KEY}"}}
-    args = SimpleNamespace(obs_url=HOSTED_URL, obs_key_env="OBS_TEST_KEY", recall=False)
-    monkeypatch.delenv("OBS_TEST_KEY", raising=False)
-    with pytest.raises(SystemExit):
-        hosted_arm("C", args)                         # no key in the environment
-    monkeypatch.setenv("OBS_TEST_KEY", "obs_sk_dummy")
-    for bad in ("B", "C:rev", "D"):
-        with pytest.raises(SystemExit):
-            hosted_arm(bad, args)
-    arm = hosted_arm("C", args)
-    assert arm.obs and arm.obs_url == HOSTED_URL and arm.obs_dir is None
-    assert arm.obs_key_env == "OBS_TEST_KEY" and not hosted_arm("A", args).obs
+    assert obs_http_server(HOSTED_URL, slot_key_env(2)) == {
+        "type": "http", "url": "https://openbrainstore.com/mcp",
+        "headers": {"Authorization": "Bearer ${OBS_KEY_2}"}}
+    assert (slot_profile(3), slot_slug(3, "data-limit-refuel-check")) == (
+        "obs-study-slot-3", "s3-data-limit-refuel-check")
+    a = {"kind": "guardrail", "title": "T", "when_to_use": "W", "body": "B"}
+    assert _fingerprint(a) == _fingerprint(dict(a)) != _fingerprint({**a, "body": "B2"})

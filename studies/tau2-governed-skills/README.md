@@ -54,47 +54,69 @@ python -m pytest tests -q -s
 `tests/fake_claude.py` stands in for Claude Code: the same stream-json protocol, real MCP calls
 to the τ² relay and to OpenBrainStore, and a scripted policy instead of a model. It runs a full
 learning round, a human-review round, a model-review round and every arm on a test task, with
-an injected rate-limit error. A few minutes.
+an injected rate-limit error. A few minutes. `tests/test_hosted.py` runs the same flow through
+slots on a local stand-in for the hosted service; it needs that service's code and is skipped
+without it.
 
-## Run it against your own OpenBrainStore
+## Run it on openbrainstore.com
 
-The quickest way to try the study's skills, or your own, is against your OpenBrainStore
-account at `https://openbrainstore.com/mcp`. The agent connects there exactly as it would in
-your own work.
+Every run command (`learn`, `evaluate`, `episode`) takes `--obs-url`. With it, every agent in the run talks to your own
+OpenBrainStore account at `https://openbrainstore.com/mcp`, the same way your own agents do,
+instead of a local server. Without it the harness starts a local OpenBrainStore for each
+setup, which is how the published runs were made.
+
+**How setups stay apart in one account.** Each setup a run measures gets a slot: an agent
+profile `obs-study-slot-<n>` with an agent key bound to it. Before a setup's conversations
+start, the harness publishes that setup's skills under slot-prefixed names (`s2-data-limit-refuel-check`),
+assigns exactly those to the slot's profile, retires whatever the slot no longer uses, and
+checks that the slot's agent is served exactly that set. Skills assigned to a profile are
+given only to that profile's agents, so your own agents never see the study's skills. The
+skills' titles, descriptions and text are unchanged; only the names the agent sees carry
+the prefix.
+
+**Setup, once.**
 
 1. Sign in at [openbrainstore.com/app](https://openbrainstore.com/app) with Google or GitHub,
-   and switch the catalog on in the **Catalog** tab.
-2. Put the skills you want to test in your catalog, and approve them there. For example, ask
-   any connected agent to propose the files from one of this study's final catalogs with
-   `propose_skill`, then approve each one in the Catalog tab.
-3. In **Agents**, create a key with `catalog:read`, and put it in your shell's environment,
-   never in a file:
+   and switch the catalog on in the **Catalog** tab. Use an account (or the other sign-in)
+   whose own skills are all assigned to profiles: skills that aren't assigned to any profile
+   are given to every agent, and the harness stops if a slot is served anything extra.
+2. In **Agents**, create a key for the harness and put it in your shell's environment as
+   `OBS_ADMIN_KEY`: no profile, with the **Load skills**, **Propose skills** and **Approve
+   skills** permissions. The harness approves each setup's skills with it; no agent is ever
+   given it.
+3. Create the slot profiles:
 
    ```
-   export OBS_AGENT_KEY=...            # macOS, Linux
-   $env:OBS_AGENT_KEY = "..."          # Windows PowerShell
+   python -m tau2_skills hosted-setup --obs-url
    ```
 
-   The harness passes Claude Code the placeholder `${OBS_AGENT_KEY}`, which Claude Code
-   fills in from the environment when it connects, so the key never appears in the run's
-   files or logs.
-4. Run one conversation, then a comparison on the held-out tasks:
+4. Create one key per slot, bound to its profile, with **Load skills** only, as
+   `OBS_KEY_1` to `OBS_KEY_4`. `hosted-setup --keys-only` prints the list again.
 
-   ```
-   python -m tau2_skills episode --run try1 --domain telecom --split test --task-ids <id> --obs-url
-   python -m tau2_skills evaluate --run mine --domain telecom --obs-url --k 3
-   ```
+Keys live only in your environment:
 
-With `--obs-url` the comparison runs two arms, interleaved task by task: **A** (no
-OpenBrainStore) and **C** (your catalog). `--obs-url URL` points at another server, and
-`--obs-key-env NAME` reads the key from a different variable.
+```
+export OBS_KEY_1=...                   # macOS, Linux
+$env:OBS_KEY_1 = "..."                 # Windows PowerShell
+```
 
-**What hosted mode can't do.** The learning loop and an exact reproduction of the published
-numbers use a local OpenBrainStore, which the harness starts for you. Each setup needs its own
-isolated catalog (including an empty one for the no-skills baseline), and the score check
-measures candidate skills before anyone approves them. The hosted service never gives an agent
-a skill its owner hasn't approved, by design. A hosted catalog also can't be frozen for the
-length of a run, so its summary records the URL instead of a catalog hash.
+The agents' MCP config holds the placeholder `${OBS_KEY_1}`, which Claude Code fills in from
+the environment when it connects, so no key ever appears in a run's files or logs.
+
+**Then** add `--obs-url` to any command in [Reproduce the study](#reproduce-the-study).
+Learning runs use slot 1, republished before every measurement. A test-split run gives one
+slot to each arm with OpenBrainStore (B and each C), in `--arms` order, so up to four.
+Each run records what every slot was served in `hosted_served.json`.
+
+**Try your own skills.** With `--obs-url` and no catalog to publish, arm C is your account's
+own catalog, as served to the agent key in `OBS_AGENT_KEY` (`--obs-key-env` picks another
+variable):
+
+```
+python -m tau2_skills evaluate --run mine --domain telecom --obs-url --k 3
+```
+
+That compares no OpenBrainStore (A) against your catalog (C) on the 40 held-out tasks.
 
 ## Reproduce the study
 
@@ -155,7 +177,7 @@ overloaded is retried, not mistaken for an exhausted plan.
 | `--recall` | off | also offer OpenBrainStore `recall` in arms B and C |
 | `--remeasure-current` | off | re-run the current catalog every round, so drift can't pass as a gain |
 | `--gate-z`, `--min-delta` | 1.645, 0.02 | noise floor = max(min_delta, z · sd_trial · √(2/T)) |
-| `--obs-url [URL]`, `--obs-key-env` | off, `OBS_AGENT_KEY` | serve arm C from a hosted OpenBrainStore account |
+| `--obs-url [URL]`, `--obs-key-env` | off, `OBS_AGENT_KEY` | agents use your OpenBrainStore account (see above) |
 | `--fake-claude` | off | the offline scripted CLI |
 
 ## Layout
@@ -167,7 +189,8 @@ overloaded is retried, not mistaken for an exhausted plan.
 | `tau2_skills/participants.py` | the τ² agent and customer, each backed by a Claude Code process |
 | `tau2_skills/episode.py` | one conversation: environment, participants, orchestrator, grading (natural-language judge removed) |
 | `tau2_skills/runner.py` | batches, checkpoints, retries, pacing |
-| `tau2_skills/obs.py` | OpenBrainStore: local data dirs for the harness's own catalog work, and the agent's MCP connection (local or hosted) |
+| `tau2_skills/obs.py` | OpenBrainStore: local data dirs for the harness's own record of proposals and decisions, and the agent's MCP connection |
+| `tau2_skills/hosted.py` | slots on openbrainstore.com: publish a setup's skills, assign them to the slot's profile, check what it serves |
 | `tau2_skills/learn.py`, `improver.py`, `reviewer.py`, `leakage.py` | the learning loop, the skill writer, the model reviewer and the leak filter |
 | `tau2_skills/evaluate.py`, `metrics.py` | arms on the test split, pass^k, CIs, summaries |
 | `tau2_skills/estimate.py` | usage and cost estimate |

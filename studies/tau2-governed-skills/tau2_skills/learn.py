@@ -200,6 +200,12 @@ def cmd_learn(args) -> None:
     canon = ObsStore(ldir / "obs")
     log_path = ldir / "edit_log.jsonl"
 
+    hosted = None
+    if getattr(args, "obs_url", None):
+        from .evaluate import hosted_state_path
+        from .hosted import HostedCatalog, slot_key_env
+        hosted = HostedCatalog(args.obs_url, hosted_state_path(args))
+
     def measure(tag: str, source: ObsStore | None, sandbox_drafts=()) -> list[dict]:
         rdir = ldir / "rounds" / tag
         snap = ObsStore(rdir / "obs")
@@ -208,8 +214,14 @@ def cmd_learn(args) -> None:
             for slug, version in sandbox_drafts:
                 snap.promote(slug, version, by="study:candidate-sandbox")
             (rdir / "obs_ready").write_text("1")
-        eps = h.batch(train, T, ArmSetup(f"train-{tag}", obs_dir=snap.data_dir), rdir / "episodes",
-                      extra={"split": "train", "round": tag})
+        arm = ArmSetup(f"train-{tag}", obs_dir=snap.data_dir)
+        if hosted:
+            # the same snapshot, served from the account through slot 1 (republished each time)
+            slugs = hosted.publish(1, snap.items(status="promoted"))
+            write_json(rdir / "hosted_served.json", {"url": args.obs_url, "slot": 1,
+                                                     **hosted.verify(1, slugs)})
+            arm = ArmSetup(f"train-{tag}", obs_url=args.obs_url, obs_key_env=slot_key_env(1))
+        eps = h.batch(train, T, arm, rdir / "episodes", extra={"split": "train", "round": tag})
         return eps
 
     # ---- round 0: baseline and noise floor

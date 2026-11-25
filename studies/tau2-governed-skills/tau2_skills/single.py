@@ -5,7 +5,7 @@ debugging a single conversation. Arm C here serves a catalog imported from a dir
 import json
 from pathlib import Path
 
-from .evaluate import hosted_arm, prepare_arm
+from .evaluate import hosted_arms, prepare_arm
 from .harness import build_harness
 from .metrics import summarize_arm
 from .obs import ObsStore
@@ -20,8 +20,16 @@ def cmd_episode(args) -> None:
                              only=args.task_ids)
     edir = h.run_dir / "episode"
     if getattr(args, "obs_url", None):
-        arm = hosted_arm(args.arm.upper(), args)
-        return _report(h.batch(tasks, args.trials, arm, edir / arm.name, extra={"split": args.split}),
+        catalog = None
+        if args.catalog:
+            catalog = ObsStore(Path(args.catalog))
+        elif args.catalog_import:
+            catalog = ObsStore(edir / "catalog_src")
+            if not catalog.items():
+                catalog.import_dir(Path(args.catalog_import))
+        a = args.arm.upper()
+        setups, _ = hosted_arms([a], args, {"": catalog} if catalog else {}, edir, own=catalog is None)
+        return _report(h.batch(tasks, args.trials, setups[a], edir / a, extra={"split": args.split}),
                        args, h)
     if args.catalog:
         catalog = ObsStore(Path(args.catalog))

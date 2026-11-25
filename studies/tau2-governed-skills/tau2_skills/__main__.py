@@ -15,10 +15,11 @@ def main() -> None:
     def hosted_args(sp):
         from .obs import HOSTED_URL
         sp.add_argument("--obs-url", nargs="?", const=HOSTED_URL, default=None, metavar="URL",
-                        help=f"serve arm C from your own hosted OpenBrainStore account instead of a "
-                             f"local catalog (bare flag: {HOSTED_URL}); arms A and C only")
+                        help=f"agents use your hosted OpenBrainStore account instead of a local "
+                             f"server (bare flag: {HOSTED_URL}); see `hosted-setup` for the keys")
         sp.add_argument("--obs-key-env", default="OBS_AGENT_KEY", metavar="NAME",
-                        help="environment variable that holds your OpenBrainStore agent key")
+                        help="with --obs-url and no catalog to publish, arm C uses your account's own "
+                             "catalog through the agent key in this environment variable")
 
     def task_args(sp):
         sp.add_argument("--task-ids", nargs="*", default=None, help="explicit task ids (must be in the split)")
@@ -26,6 +27,7 @@ def main() -> None:
 
     sp = sub.add_parser("learn", help="learning loop on the TRAIN split")
     add_common_args(sp)
+    hosted_args(sp)
     task_args(sp)
     sp.add_argument("--train-limit", type=int, default=None, help="use a seeded sample of N train tasks")
     sp.add_argument("--trials", type=int, default=3, help="trials per train task per measurement (T)")
@@ -85,6 +87,14 @@ def main() -> None:
     sp.add_argument("--catalog-import", default=None, help="directory with INDEX.md + item files")
     hosted_args(sp)
 
+    sp = sub.add_parser("hosted-setup", help="create the agent profiles a hosted run uses, and list its keys")
+    from .common import RUNS_DIR as _RD
+    from .obs import HOSTED_URL as _HU
+    sp.add_argument("--obs-url", nargs="?", const=_HU, default=_HU, metavar="URL")
+    sp.add_argument("--slots", type=int, default=4)
+    sp.add_argument("--runs-dir", default=str(_RD))
+    sp.add_argument("--keys-only", action="store_true", help="only print which keys to create")
+
     sp = sub.add_parser("estimate", help="token / invocation / API-equivalent cost estimate")
     sp.add_argument("--cc-overhead", type=int, default=6_000,
                     help="Claude Code's own prompt tokens per agent call (measure in the pilot)")
@@ -118,6 +128,13 @@ def dispatch(args) -> None:
     elif args.command == "episode":
         from .single import cmd_episode
         cmd_episode(args)
+    elif args.command == "hosted-setup":
+        from .evaluate import hosted_state_path
+        from .hosted import HostedCatalog, setup_help
+        if not args.keys_only:
+            made = HostedCatalog(args.obs_url, hosted_state_path(args)).setup(args.slots)
+            print(f"profiles created: {', '.join(made) or 'none (they already exist)'}", end="\n\n")
+        print(setup_help(args.obs_url, args.slots))
     elif args.command == "estimate":
         from .estimate import cmd_estimate
         cmd_estimate(args)

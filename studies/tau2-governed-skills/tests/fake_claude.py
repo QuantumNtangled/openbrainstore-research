@@ -112,7 +112,11 @@ class Fake:
         denied = split_list(self.args.disallowedTools)
         for name, s in servers.items():
             if s.get("type") == "http":
-                read, write, _ = await stack.enter_async_context(streamablehttp_client(s["url"]))
+                # like Claude Code: ${VAR} in a header is filled in from the environment
+                headers = {k: re.sub(r"\$\{(\w+)\}", lambda m: os.environ.get(m.group(1), ""), v)
+                           for k, v in (s.get("headers") or {}).items()}
+                read, write, _ = await stack.enter_async_context(
+                    streamablehttp_client(s["url"], headers=headers or None))
             else:
                 env = dict(os.environ)
                 env.update(s.get("env") or {})

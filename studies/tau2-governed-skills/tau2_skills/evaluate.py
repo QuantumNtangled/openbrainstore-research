@@ -98,38 +98,40 @@ def prepare_arm(key: str, edir: Path, catalog: "ObsStore | None", recall: bool) 
     return ArmSetup(key, skills_md=path.read_text(encoding="utf-8"))
 
 
-def hosted_arm(key: str, args) -> ArmSetup:
-    """Arm C served by your own hosted OpenBrainStore account (--obs-url). The agent sees
-    whatever that account's catalog gives the agent key named by --obs-key-env, so the
-    catalog can't be frozen the way a local one is; the summary records that."""
-    if key == "A":
-        return ArmSetup("A")
-    if key != "C":
-        raise SystemExit(f"--obs-url runs arms A and C only, not {key}: an empty catalog (B), "
-                         "named catalogs and prompt-inlined skills (D) need local OBS")
-    if not os.environ.get(args.obs_key_env):
-        raise SystemExit(f"set {args.obs_key_env} to an OpenBrainStore agent key with catalog:read "
-                         "(web app > Agents > Create key); it is read from the environment only")
-    tools = ("agent_startup", "get_skill") + (("recall",) if getattr(args, "recall", False) else ())
-    return ArmSetup("C", obs_url=args.obs_url, obs_key_env=args.obs_key_env, obs_tools=tools)
+def hosted_state_path(args) -> Path:
+    from urllib.parse import urlparse
+    return Path(args.runs_dir) / f"hosted_slots.{urlparse(args.obs_url).netloc.replace(':', '_')}.json"
 
 
-def evaluate_hosted(args, arms: list[str]) -> None:
-    setups = {a: hosted_arm(a, args) for a in arms}
-    h = build_harness(args)
-    edir = h.run_dir / "eval"
-    test = load_split_tasks(args.domain, "test", limit=args.test_limit, seed=args.sample_seed,
-                            only=args.task_ids)
-    if args.arm_order == "interleave":
-        for task in test:
-            for a in arms:
-                h.batch([task], args.k, setups[a], edir / a, extra={"split": "test"})
-    else:
-        for a in arms:
-            h.batch(test, args.k, setups[a], edir / a, extra={"split": "test"})
-    write_summary(args.run, h.run_dir, arms, args.k,
-                  extra={"catalog": {"hosted": args.obs_url, "frozen": False},
-                         "claude_invocations": h.budget.n})
+def hosted_arms(arms: list[str], args, catalogs: dict, edir: Path, own: bool) -> tuple[dict, dict]:
+    """Arm setups for a hosted run (--obs-url). A has no OpenBrainStore; D inlines a local
+    catalog in the prompt, as in a local run; B and every C get a slot of their own, in
+    --arms order, published and checked before any conversation starts. With `own`, plain C
+    is your account's own catalog as served to the key in --obs-key-env, published by nobody."""
+    from .hosted import HostedCatalog, slot_key_env
+    if getattr(args, "recall", False):
+        raise SystemExit("--recall isn't available with --obs-url: slot keys only load skills")
+    hc = HostedCatalog(args.obs_url, hosted_state_path(args))
+    tools = ("agent_startup", "get_skill")
+    setups, served, slot = {}, {}, 0
+    for a in arms:
+        if a == "A" or a[0] == "D":
+            setups[a] = prepare_arm(a, edir, catalogs.get(a[2:]) if a[0] == "D" else None, False)
+            continue
+        if a == "C" and own:
+            if not os.environ.get(args.obs_key_env):
+                raise SystemExit(f"set {args.obs_key_env} to an OpenBrainStore agent key with Load skills; "
+                                 "it is read from the environment only")
+            setups[a] = ArmSetup("C", obs_url=args.obs_url, obs_key_env=args.obs_key_env, obs_tools=tools)
+            served[a] = {"key_env": args.obs_key_env, "own_catalog": True}
+            continue
+        slot += 1
+        items = [] if a == "B" else catalogs[a[2:]].items(status="promoted")
+        slugs = hc.publish(slot, items)
+        served[a] = {"slot": slot, **hc.verify(slot, slugs)}
+        setups[a] = ArmSetup(a, obs_url=args.obs_url, obs_key_env=slot_key_env(slot), obs_tools=tools)
+        print(f"[{a}] slot {slot}: {len(slugs)} item(s) served", flush=True)
+    return setups, served
 
 
 def catalog_snapshot(catalog: ObsStore) -> dict:
@@ -141,14 +143,15 @@ def catalog_snapshot(catalog: ObsStore) -> dict:
 
 def cmd_evaluate(args) -> None:
     arms = parse_arms(args.arms)
-    if getattr(args, "obs_url", None):
-        if args.arms == "A,B,C,D":          # the local default; hosted runs A and C
-            arms = ["A", "C"]
-        return evaluate_hosted(args, arms)
+    hosted = bool(getattr(args, "obs_url", None))
     h = build_harness(args)
     edir = h.run_dir / "eval"
+    # hosted, with no catalog to publish: plain C is the account's own catalog
+    own = hosted and not args.catalog and not (h.run_dir / "learn" / "obs").exists()
+    if own and args.arms == "A,B,C,D":
+        arms = ["A", "C"]
     dirs = parse_catalogs(args.catalog, h.run_dir / "learn" / "obs")
-    used = {a[2:] for a in arms if a[0] in "CD"}
+    used = {a[2:] for a in arms if a[0] in "CD" and not (own and a == "C")}
     if used - set(dirs):
         raise SystemExit(f"arms name catalogs with no --catalog: {sorted(used - set(dirs))}")
     catalogs = {n: ObsStore(dirs[n]) for n in sorted(used)}
@@ -167,21 +170,26 @@ def cmd_evaluate(args) -> None:
     test = load_split_tasks(args.domain, "test", limit=args.test_limit, seed=args.sample_seed,
                             only=args.task_ids)
 
-    def setup(a):
-        return prepare_arm(a, edir, catalogs.get(a[2:]) if a[0] in "CD" else None, args.recall)
+    served = {}
+    if hosted:
+        setups, served = hosted_arms(arms, args, catalogs, edir, own)
+        write_json(edir / "hosted_served.json", {"url": args.obs_url, "arms": served})
+    else:
+        setups = {a: prepare_arm(a, edir, catalogs.get(a[2:]) if a[0] in "CD" else None, args.recall)
+                  for a in arms}
 
     if args.arm_order == "interleave":
         # one arm after another per task keeps time-of-day and rate-limit effects balanced
-        setups = {a: setup(a) for a in arms}
         for task in test:
             for a in arms:
                 h.batch([task], args.k, setups[a], edir / a, extra={"split": "test"})
     else:
         for a in arms:
-            h.batch(test, args.k, setup(a), edir / a, extra={"split": "test"})
-    write_summary(args.run, h.run_dir, arms, args.k,
-                  extra={"catalog": snaps[""] if set(snaps) == {""} else snaps,
-                         "claude_invocations": h.budget.n})
+            h.batch(test, args.k, setups[a], edir / a, extra={"split": "test"})
+    extra = {"catalog": snaps[""] if set(snaps) == {""} else snaps, "claude_invocations": h.budget.n}
+    if hosted:
+        extra["hosted"] = {"url": args.obs_url, "arms": served}
+    write_summary(args.run, h.run_dir, arms, args.k, extra=extra)
 
 
 def load_arm(run_dir: Path, arm: str) -> list[dict]:
