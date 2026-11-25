@@ -275,7 +275,7 @@ The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-o`; result
 | B | OBS, empty | also stands for **gate-only Haiku**, whose final catalog is empty (§14) |
 | C:auto | Haiku's round-1 batch as written: `use-device-tools-not-manual-steps@v1` + `data-limit-refuel-check@v1` | **auto-approval**: the agent's own proposals go live with no gate and no review. Only the leakage screen applies, because it protects the test set. |
 | C:rev | `tel-hr` final: the reviewer's edit `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v1` | **human review + gate** |
-| C:orev | `tel-or` final (training run in progress) | **model review + gate**: Opus 5.5 in the reviewer's seat for Haiku's proposals, with the same inputs and the same gate |
+| C:orev | `tel-or` final: 2 items, train 0.964 | **model review + gate**: Opus 5.5 in the reviewer's seat for Haiku's proposals, with the same inputs and the same gate |
 | C:opus | `tel-o` final: `always-check-data-limit-on-data-issues@v1` + `customer-runs-device-checks-no-early-transfer@v1` | **stronger skill writer + gate** |
 
 - **Arm D is not run.** Every promoted item that matters here is a guardrail, and guardrails are already inlined in `agent_startup`. So C − D would mostly measure tool overhead. It's left for a follow-up.
@@ -425,6 +425,7 @@ human seat.
 | `tel-h` | Haiku | gate only | nothing; rounds 1–3 rejected (0.360, 0.450, 0.532 against re-measures of 0.703, 0.694, 0.712) | n/a (empty, = arm B) |
 | `tel-hr` | Haiku | human + gate | round 1: 1 edited guardrail + 1 approved procedure | 0.896 (re-measured 0.932) |
 | `tel-o` | Opus | gate only | round 1: 2 guardrails | 0.977 (re-measured 0.973) |
+| `tel-or` | Haiku | Opus 5.5 review + gate | round 1: 1 edited guardrail + 1 edited procedure | 0.964 (re-measured 0.955) |
 
 - Both runs that promoted anything did so in round 1 and then hit the ceiling. Their later candidates gained 1.8 to 2.3 points, under floors of 5.8 to 6.9.
 - Gate-only Haiku wrote the same wrong premise (the agent operates the customer's phone) in all three rounds. The gate kept it out, but nothing useful got in either.
@@ -458,3 +459,19 @@ human seat.
   - `tel-hr` round-1 candidate (human + AI-assisted review) 0.896
   - `tel-o` final (Opus teacher) 0.977
   - The 6.8-point gap to `tel-hr` is about the size of the run-to-run drift recorded above, so it isn't evidence by itself. The interleaved TEST evaluation (§13) is the comparison that counts.
+
+### `tel-or` results (train), recorded 2026-11-25
+
+- **Round 1: promoted.** Candidate 0.964 against a re-measure of 0.667. The gain is +29.7 points, against a floor of 5.8.
+- **Round 2: no candidate.** Haiku's only proposal (an MMS triage order) was screened out on `4g_5g_preferred`, the same false positive as before, so there was nothing to review.
+- **Round 3: rejected by the gate.** Candidate 0.973 against a re-measure of 0.955. The gain is +1.8 points, under the floor: the same ceiling as `tel-hr` and `tel-o`.
+  - The MMS triage proposal was screened out again.
+  - Opus edited the other two before they were measured. Both corrections were checked against the domain files:
+    - **`speed-test-poor-only-vpn-rule`.** Haiku's guardrail would have told the agent that a Good speed is fine, to disconnect a VPN only on a Poor *speed test*, and to offer a transfer when the customer wants more. The tech-support manual says "Any speed below 'Excellent' is considered slow". It ties `disconnect_vpn` to the VPN's own performance level being Poor in `check_vpn_status`. Opus rewrote the guardrail to match.
+    - **`roaming-enable-when-traveling`.** Haiku's procedure enabled roaming on the line and told the agent *not* to ask for the phone's `toggle_roaming` in its place. The manual requires both: Data Roaming ON on the phone, and roaming enabled on the line. Opus added the device step.
+- **Final set:** `data-limit-refuel-check@v2` and `use-device-tools-not-manual-steps@v2`, both edited by Opus and promoted as `model:claude-opus-5-5+study:gate`. Train score 0.964.
+- **Cost:** 1,787 Claude Code invocations for the run. The two review calls cost about $0.15 each at API-equivalent prices, so about $0.30 of model review for the whole run.
+- **What it shows, on train only:**
+  - The model reviewer caught the fatal device-tools premise in round 1, as the AI-assisted human review did.
+  - It also caught three further errors that would otherwise have reached the gate: two in round 1 and the VPN contradiction in round 3. Under gate-only promotion, a proposal like the VPN guardrail could pass the gate whenever it doesn't cost enough train points. It would then sit in the catalog contradicting policy.
+  - Whether these catalogs differ on held-out tasks is for the TEST evaluation (§13).
