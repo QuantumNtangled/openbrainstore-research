@@ -267,30 +267,35 @@ TEST episode. Commit this section before running `evaluate`.*
 
 **Amendment, same day, before any result existed:** the reviewer changed the trials from 4 to 3 per task per arm. The first launch (k = 4) was stopped about a minute in, while its first four episodes were still running; none had finished, so no score was seen. Their partial logs are kept in `runs/tel-test/aborted-k4/` and are not used. Everything below is written for k = 3.
 
+**Second amendment, same day:** the reviewer added the no-skills baseline, arm B (OBS connected, empty catalog: the configuration of every train re-measure). The run was stopped and restarted with B interleaved. At the restart 6 episodes had finished (the first task, arms C:rev and C:orev); their scores were not looked at and they are kept. For that first task B runs a few minutes after those two arms; every later task is fully interleaved. The baseline predictions and the transfer rule below are the ones from the six-arm draft. The shrinkage rule now compares gains over B rather than raw scores, since a baseline is available.
+
 The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-or`, `tel-o`; results in §14).
 
 **Arms.** All arms run in one interleaved `evaluate` run (`--run tel-test`): arm by arm within each task, so drift falls on every arm equally.
 
 | arm | catalog (frozen refs) | how it got there |
 |---|---|---|
+| B | OBS connected, **empty** | the no-skills baseline; also where gate-only Haiku (`tel-h`) ended up |
 | C:rev | `tel-hr` final: `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v1` (train 0.896) | **human review + gate**: Haiku proposed, the reviewer (with AI help) approved or edited, the gate measured |
 | C:orev | `tel-or` final: `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v2` (train 0.964) | **model review + gate**: Haiku proposed, Opus 5.5 in the reviewer's seat with the same inputs, the same gate |
 | C:opus | `tel-o` final: `always-check-data-limit-on-data-issues@v1` + `customer-runs-device-checks-no-early-transfer@v1` (train 0.977) | **stronger skill writer + gate**: Opus proposed, gate only |
 
 **Not run, and what that means for the report.**
-- **No baseline arm (A or B) runs on TEST.** This run compares the three governed catalogs with each other. It does not measure the gain over no skills on held-out tasks. The only no-skills measurements are the train re-measures (0.626–0.712), which are on a different task set and must not be subtracted from TEST scores. The report states the train gains as train gains and the TEST result as a comparison between approval paths.
+- **No arm A** (plain Haiku without OBS). B − A, the cost of the extra tools and prompt alone, is not measured.
 - **No C:auto arm.** The harm of auto-approval rests on the train measurement (Haiku's round-1 batch scored 0.360 against a 0.676 re-measure, §14).
 - **No arm D**, as in the draft: every promoted item here is a guardrail, already inlined by `agent_startup`.
-- A baseline added later would not be interleaved with these arms, so drift (±4–8 points between re-measures, §14) would fall on it alone. That is a weaker comparison and the report would say so.
 
 **Setup.**
-- Telecom TEST: 40 tasks, k = 3 trials per task per arm, so 3 arms × 120 = 360 episodes.
+- Telecom TEST: 40 tasks, k = 3 trials per task per arm, so 4 arms × 120 = 480 episodes.
 - Agent: `claude-haiku-5-5`, effort medium. User simulator: `claude-sonnet-5-5`, effort medium (the same as in training; §6's default is Haiku).
 - Concurrency 3, so each task's 3 trials run in one wave. `--stop-at-utilization 0.7`.
 
 **Primary comparisons** (pass^1, paired over tasks, 95% bootstrap CI as in §9):
-1. **C:rev − C:orev**: human (AI-assisted) review against model review, for the same Haiku proposals.
-2. **C:opus − C:orev**: a stronger skill writer with gate-only approval against a weaker writer whose proposals a strong model reviewed.
+1. **C:rev − B**: what Haiku-written skills with human (AI-assisted) review add over no skills.
+2. **C:orev − B**: the same, with Opus as the reviewer.
+3. **C:opus − B**: what Opus-written skills with gate-only approval add over no skills.
+4. **C:rev − C:orev**: human (AI-assisted) review against model review, for the same Haiku proposals.
+5. **C:opus − C:orev**: a stronger skill writer with gate-only approval against a weaker writer whose proposals a strong model reviewed.
 
 Secondary:
 - C:opus − C:rev.
@@ -301,15 +306,19 @@ Secondary:
 
 | quantity | expected |
 |---|---|
-| pass^1 of each arm | 0.75 to 0.95 |
+| pass^1 of each C arm | 0.75 to 0.95 |
+| C:rev − B | about +0.15 (somewhere in +0.05 to +0.25); CI above 0 |
+| C:orev − B | about +0.15 (somewhere in +0.05 to +0.25); CI above 0 |
+| C:opus − B | about +0.20 (somewhere in +0.10 to +0.30); CI above 0 |
 | C:rev − C:orev | within ±0.07; CI includes 0 |
 | C:opus − C:orev | within ±0.07; CI includes 0 |
 | C:opus − C:rev | small and positive, under +0.10; CI may include 0 |
 
 **Decision rules** (decided now, reported whatever happens):
+- **Skills don't transfer:** if the 95% CIs of C:rev − B, C:orev − B and C:opus − B all include 0 or lie below it, the learned catalogs did not carry over to held-out tasks. The report says so.
 - **Review path:** if the CI of C:rev − C:orev includes 0, human and model review produced catalogs that are indistinguishable on held-out tasks. If it excludes 0, the report names which reviewer did better and reads the disagreeing tasks to say why.
 - **Writer against reviewer:** if the CI of C:opus − C:orev includes 0, reviewing a weaker model's proposals matched letting a stronger model write them. If C:opus is clearly ahead, the report says review did not close the gap to a stronger writer.
-- **Shrinkage:** if any arm's TEST pass^1 is more than 0.15 below its train score, the report flags that the catalog fit the train tasks more than it generalized.
+- **Shrinkage:** if any C arm's TEST gain over B is less than half its train gain over the train re-measure, the report flags that the catalog fit the train tasks more than it generalized.
 
 Every catalog item passed the leakage screen when it was proposed. The reviewers' edits (human and Opus) were screened with the same screen.
 
