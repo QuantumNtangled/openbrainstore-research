@@ -569,7 +569,7 @@ human seat.
 
 ## 15. Follow-up: Opus as the agent (TEST), pre-registration
 
-**DRAFT, awaiting agreement. No episode of this run has been started.**
+**Agreed on 2026-11-25, as drafted. No episode of this run had been started when this entry was committed.**
 
 **Why.** The post-hoc cost analysis (§13) estimated that Opus as the agent would cost about 33 times Haiku with Opus-written skills. That estimate prices Haiku's token counts at Opus rates. This run measures Opus's success rate and token cost directly, and puts Haiku with Opus's skills next to it in the same interleaved run, so the comparison doesn't cross runs or days.
 
@@ -623,4 +623,4 @@ Secondary:
 - **Replication:** if C:small lands more than 0.07 below `tel-test`'s 0.983, the report flags run-to-run drift and gives both numbers.
 - **Cost:** the measured ratio replaces the §13 estimate in the report, whichever way it falls.
 
-- Date and commit of this entry: (filled in when agreed)
+- Date and commit of this entry: 2026-11-25, the commit that adds this text (see `git log -- PROTOCOL.md`).
