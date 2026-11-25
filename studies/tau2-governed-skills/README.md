@@ -205,3 +205,13 @@ overloaded is retried, not mistaken for an exhausted plan.
 | `tau2_skills/estimate.py` | usage and cost estimate |
 | `smoke_catalog/` | a hand-written one-item catalog for the real smoke test |
 | `tests/` | the fake CLI, the offline end-to-end tests, unit tests |
+
+## Licenses
+
+This study's code is under the repository's [Apache License 2.0](../../LICENSE). It installs
+other software under its own license:
+- [τ²-bench](https://github.com/sierra-research/tau2-bench), cloned at setup from its own
+  source.
+- OpenBrainStore ([openbrainstore-core](https://github.com/QuantumNtangled/openbrainstore-core),
+  PolyForm Small Business 1.0.0), for local runs. Hosted runs use
+  [openbrainstore.com](https://openbrainstore.com) instead.
