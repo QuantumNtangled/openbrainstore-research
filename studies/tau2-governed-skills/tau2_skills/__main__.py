@@ -44,14 +44,16 @@ def main() -> None:
     sp.add_argument("--arms", default="A,B,C,D")
     sp.add_argument("--k", type=int, default=4, help="trials per test task")
     sp.add_argument("--test-limit", type=int, default=None)
-    sp.add_argument("--catalog", default=None, help="OBS data dir of the learned catalog "
-                    "(default: runs/<run>/learn/obs)")
+    sp.add_argument("--catalog", action="append", default=None, metavar="[NAME=]DIR",
+                    help="OBS data dir of a learned catalog (default: runs/<run>/learn/obs). "
+                         "Repeat with NAME=DIR to compare catalogs in one interleaved run: arms "
+                         "C:NAME and D:NAME use catalog NAME, and plain C/D use the unnamed one")
     sp.add_argument("--recall", action="store_true", help="also offer OBS recall in arms B and C")
     sp.add_argument("--arm-order", default="interleave", choices=["interleave", "sequential"])
 
     sp = sub.add_parser("summarize", help="rebuild results/<run>/summary.* from episode files")
     sp.add_argument("--run", required=True)
-    sp.add_argument("--arms", default="A,B,C,D")
+    sp.add_argument("--arms", default="A,B,C,D", help="as in evaluate, e.g. A,B,C:rev,D:rev")
     sp.add_argument("--k", type=int, default=4)
     from .common import RUNS_DIR
     sp.add_argument("--runs-dir", default=str(RUNS_DIR))

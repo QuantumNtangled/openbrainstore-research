@@ -3,7 +3,11 @@
   A  Claude Code + tau2 tools
   B  A + OBS (agent_startup, get_skill) with an EMPTY catalog, + the OBS prompt snippet
   C  A + OBS with the promoted catalog from the learning run, + the OBS prompt snippet
-  D  A + the promoted skill text in the appended system prompt, no OBS"""
+  D  A + the promoted skill text in the appended system prompt, no OBS
+
+Several learned catalogs can be compared in one interleaved run: `--catalog rev=DIR
+--catalog opus=DIR --arms A,B,C:rev,C:opus` runs arm C once per catalog (results under
+eval/C-rev and eval/C-opus). Plain C and D use the unnamed --catalog, as before."""
 
 import hashlib
 import json
@@ -17,31 +21,80 @@ from .metrics import by_task, paired_diff, summarize_arm
 from .obs import ObsStore
 from .splits import load_split_tasks
 
-PAIRS = (("C", "B"), ("C", "A"), ("D", "A"), ("C", "D"), ("B", "A"))
+def arm_key(spec: str) -> str:
+    """'C:rev' -> 'C-rev' (the arm's label and its eval/ directory); 'a' -> 'A'."""
+    letter, _, name = spec.strip().partition(":")
+    letter, name = letter.upper(), name.strip()
+    if len(letter) != 1 or letter not in "ABCD" or (name and letter in "AB"):
+        raise SystemExit(f"unknown arm {spec!r} (A, B, C, D, or C:NAME / D:NAME)")
+    return f"{letter}-{name}" if name else letter
 
 
-def prepare_arm(name: str, edir: Path, catalog: ObsStore, recall: bool) -> ArmSetup:
+def parse_arms(text: str) -> list[str]:
+    keys = [arm_key(a) for a in text.split(",") if a.strip()]
+    if len(set(keys)) != len(keys):
+        raise SystemExit(f"--arms lists an arm twice: {text}")
+    return keys
+
+
+def pairs_for(arms: list[str]) -> list[tuple[str, str]]:
+    """Paired differences to report: each C against B, A and its own D; each D against A;
+    B against A; and every two C arms against each other (e.g. two catalogs)."""
+    have, out = set(arms), []
+    cs = [a for a in arms if a[0] == "C"]
+    for c in cs:
+        d = "D" + c[1:]
+        out += [(c, "B"), (c, "A"), (d, "A"), (c, d)]
+    out += [(d, "A") for d in arms if d[0] == "D"]
+    out.append(("B", "A"))
+    out += [(x, y) for i, x in enumerate(cs) for y in cs[i + 1:]]
+    seen, res = set(), []
+    for pair in out:
+        if pair[0] in have and pair[1] in have and pair not in seen:
+            seen.add(pair)
+            res.append(pair)
+    return res
+
+
+def parse_catalogs(values, default_dir: Path) -> dict[str, Path]:
+    """--catalog values -> {name: dir}; the unnamed one is ''. With none given, '' is the
+    run's own learned catalog."""
+    out: dict[str, Path] = {}
+    for v in values or []:
+        name, sep, d = v.partition("=")
+        name, d = (name.strip(), d) if sep else ("", v)
+        if name in out:
+            raise SystemExit(f"--catalog {name or '(unnamed)'} given twice")
+        out[name] = Path(d)
+    if not out:
+        out[""] = default_dir
+    return out
+
+
+def prepare_arm(key: str, edir: Path, catalog: "ObsStore | None", recall: bool) -> ArmSetup:
     tools = ("agent_startup", "get_skill") + (("recall",) if recall else ())
-    if name == "A":
+    letter = key[0]
+    if letter == "A":
         return ArmSetup("A")
-    if name == "B":
+    if letter == "B":
         store = ObsStore(edir / "obs_B")
         if store.items():
             raise SystemExit(f"{store.data_dir} is not empty; arm B needs an empty catalog")
         return ArmSetup("B", obs_dir=store.data_dir, obs_tools=tools)
-    if name == "C":
-        store = ObsStore(edir / "obs_C")
-        if not (edir / "obs_C_ready").exists():
+    if catalog is None:
+        raise SystemExit(f"arm {key} has no catalog")
+    if letter == "C":
+        store = ObsStore(edir / f"obs_{key}")
+        ready = edir / f"obs_{key}_ready"
+        if not ready.exists():
             catalog.copy_catalog_to(store)
-            (edir / "obs_C_ready").write_text("1")
-        return ArmSetup("C", obs_dir=store.data_dir, obs_tools=tools)
-    if name == "D":
-        path = edir / "arm_D_skills.md"
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(catalog.promoted_markdown(), encoding="utf-8")
-        return ArmSetup("D", skills_md=path.read_text(encoding="utf-8"))
-    raise SystemExit(f"unknown arm {name}")
+            ready.write_text("1")
+        return ArmSetup(key, obs_dir=store.data_dir, obs_tools=tools)
+    path = edir / f"arm_{key}_skills.md"
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(catalog.promoted_markdown(), encoding="utf-8")
+    return ArmSetup(key, skills_md=path.read_text(encoding="utf-8"))
 
 
 def catalog_snapshot(catalog: ObsStore) -> dict:
@@ -52,31 +105,44 @@ def catalog_snapshot(catalog: ObsStore) -> dict:
 
 
 def cmd_evaluate(args) -> None:
+    arms = parse_arms(args.arms)
     h = build_harness(args)
     edir = h.run_dir / "eval"
-    catalog = ObsStore(Path(args.catalog) if args.catalog else h.run_dir / "learn" / "obs")
-    snap = catalog_snapshot(catalog)
+    dirs = parse_catalogs(args.catalog, h.run_dir / "learn" / "obs")
+    used = {a[2:] for a in arms if a[0] in "CD"}
+    if used - set(dirs):
+        raise SystemExit(f"arms name catalogs with no --catalog: {sorted(used - set(dirs))}")
+    catalogs = {n: ObsStore(dirs[n]) for n in sorted(used)}
+    snaps = {n: catalog_snapshot(c) for n, c in catalogs.items()}
     frozen = read_json(edir / "catalog_snapshot.json")
-    if frozen and frozen["hash"] != snap["hash"]:
-        raise SystemExit("the learned catalog changed since this evaluation started; use a new --run")
-    write_json(edir / "catalog_snapshot.json", snap)
-    if not snap["refs"]:
-        print("warning: the catalog has no promoted items, so C equals B and D equals A", flush=True)
+    if frozen and "hash" in frozen:            # written by a single-catalog run
+        frozen = {"": frozen}
+    if frozen and any(n in frozen and frozen[n]["hash"] != sn["hash"] for n, sn in snaps.items()):
+        raise SystemExit("a learned catalog changed since this evaluation started; use a new --run")
+    merged = {**(frozen or {}), **snaps}
+    write_json(edir / "catalog_snapshot.json", merged[""] if set(merged) == {""} else merged)
+    for n, sn in snaps.items():
+        if not sn["refs"]:
+            print(f"warning: catalog {n or '(unnamed)'} has no promoted items, so its C equals B "
+                  f"and its D equals A", flush=True)
     test = load_split_tasks(args.domain, "test", limit=args.test_limit, seed=args.sample_seed,
                             only=args.task_ids)
-    arms = [a.strip().upper() for a in args.arms.split(",") if a.strip()]
+
+    def setup(a):
+        return prepare_arm(a, edir, catalogs.get(a[2:]) if a[0] in "CD" else None, args.recall)
+
     if args.arm_order == "interleave":
         # one arm after another per task keeps time-of-day and rate-limit effects balanced
-        setups = {a: prepare_arm(a, edir, catalog, args.recall) for a in arms}
+        setups = {a: setup(a) for a in arms}
         for task in test:
             for a in arms:
                 h.batch([task], args.k, setups[a], edir / a, extra={"split": "test"})
     else:
         for a in arms:
-            h.batch(test, args.k, prepare_arm(a, edir, catalog, args.recall), edir / a,
-                    extra={"split": "test"})
-    write_summary(args.run, h.run_dir, arms, args.k, extra={"catalog": snap,
-                                                            "claude_invocations": h.budget.n})
+            h.batch(test, args.k, setup(a), edir / a, extra={"split": "test"})
+    write_summary(args.run, h.run_dir, arms, args.k,
+                  extra={"catalog": snaps[""] if set(snaps) == {""} else snaps,
+                         "claude_invocations": h.budget.n})
 
 
 def load_arm(run_dir: Path, arm: str) -> list[dict]:
@@ -100,7 +166,7 @@ def write_summary(run: str, run_dir: Path, arms: list[str], k: int, extra: dict 
         **(extra or {}),
     }
     tasks = {a: by_task(eps) for a, eps in data.items()}
-    for x, y in PAIRS:
+    for x, y in pairs_for(arms):
         if x in tasks and y in tasks:
             summary["paired"][f"{x}-{y}"] = {str(kk): paired_diff(tasks[x], tasks[y], kk)
                                              for kk in sorted({1, k})}
@@ -150,5 +216,4 @@ def render_md(s: dict) -> str:
 
 def cmd_summarize(args) -> None:
     run_dir = Path(args.runs_dir) / args.run
-    arms = [a.strip().upper() for a in args.arms.split(",") if a.strip()]
-    write_summary(args.run, run_dir, arms, args.k)
+    write_summary(args.run, run_dir, parse_arms(args.arms), args.k)
