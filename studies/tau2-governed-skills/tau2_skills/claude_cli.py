@@ -38,6 +38,20 @@ _RATE_RE = re.compile(r"usage limit|rate.?limit|\b429\b|overloaded|too many requ
                       r"hit your limit|exceeded your", re.I)
 _RESET_EPOCH_RE = re.compile(r"\|(\d{10})\b")
 
+_ALLOWED = (None, "allowed", "allowed_warning")
+
+
+def window_reset(info: dict | None) -> float | None:
+    """When the plan window that is actually exhausted resets, from a rate_limit_info. None
+    while every window is still allowed: the error was then transient (a 529 "overloaded", a
+    short 429), so the run should back off and retry, not wait for the weekly reset."""
+    info = info or {}
+    resets = [w.get("resetsAt") for w in (info.get("unifiedWindows") or {}).values()
+              if w.get("status") not in _ALLOWED and w.get("resetsAt")]
+    if not resets and info.get("status") not in _ALLOWED and info.get("resetsAt"):
+        resets = [info["resetsAt"]]
+    return float(max(resets)) if resets else None
+
 
 def find_claude() -> list[str]:
     """The real CLI. On Windows the npm shim is a .cmd that would route every argument through

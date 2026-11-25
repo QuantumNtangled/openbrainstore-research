@@ -19,6 +19,7 @@ from tau2.data_model.message import (AssistantMessage, MultiToolMessage, ToolCal
 from tau2.user.user_simulator import UserSimulator
 
 from .claude_cli import (CLIError, ClaudeConfig, ClaudeSession, InvocationBudget, RateLimited,
+                         window_reset,
                          check_result, prompt_args)
 from .relay import Relay
 
@@ -136,9 +137,8 @@ class Engine:
                 try:
                     check_result(ev)
                 except RateLimited as e:
-                    info = self.session.usage.rate_limit_info or {}
-                    if not e.reset_at and info.get("resetsAt"):
-                        e.reset_at = float(info["resetsAt"])
+                    if not e.reset_at:
+                        e.reset_at = window_reset(self.session.usage.rate_limit_info)
                     raise
                 text = "\n\n".join(self.turn_texts).strip() or (ev.get("result") or "").strip()
                 self.turn_texts = []

@@ -11,7 +11,7 @@ from tau2_skills.common import cost_of_model_usage  # noqa: E402
 from tau2_skills.leakage import build_denylist, screen  # noqa: E402
 from tau2_skills.metrics import paired_diff, pass_hat_k, pass_hat_k_task  # noqa: E402
 from tau2_skills.runner import Pacer, PlanLimitStop, utilization  # noqa: E402
-from tau2_skills.claude_cli import RateLimited  # noqa: E402
+from tau2_skills.claude_cli import RateLimited, window_reset  # noqa: E402
 
 
 def test_pass_hat_k():
@@ -42,6 +42,23 @@ def test_pacer_stops_on_utilization_and_long_pause(tmp_path):
     import time
     with pytest.raises(PlanLimitStop):
         p2.trip(RateLimited("usage limit reached", reset_at=time.time() + 7200))
+
+
+def test_overload_is_not_the_weekly_reset():
+    # a 529 "overloaded" while the plan windows are still allowed: back off, don't wait for
+    # the weekly reset (this stopped the tel-or run for 2.5 days at 15% utilization)
+    allowed = {"status": "allowed", "resetsAt": 1795842000, "rateLimitType": "seven_day",
+               "unifiedWindows": {"seven_day": {"utilization": 0.15, "resetsAt": 1795842000,
+                                                "status": "allowed"}}}
+    assert window_reset(allowed) is None and window_reset(None) is None
+    hit = {"status": "rejected", "resetsAt": 1795000000, "rateLimitType": "five_hour",
+           "unifiedWindows": {"five_hour": {"utilization": 1.0, "resetsAt": 1795000000,
+                                            "status": "rejected"},
+                              "seven_day": {"utilization": 0.15, "resetsAt": 1795842000,
+                                            "status": "allowed"}}}
+    assert window_reset(hit) == 1795000000.0
+    p = Pacer(max_pause=3 * 3600)
+    assert p.trip(RateLimited("API Error: 529 Overloaded", window_reset(allowed))) < 120
 
 
 def test_leakage_screen():
