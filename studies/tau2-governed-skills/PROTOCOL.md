@@ -624,3 +624,53 @@ Secondary:
 - **Cost:** the measured ratio replaces the §13 estimate in the report, whichever way it falls.
 
 - Date and commit of this entry: 2026-11-25, the commit that adds this text (see `git log -- PROTOCOL.md`).
+
+### Results (TEST), recorded 2026-11-25
+
+Run `tel-test-opus`: 3 arms × 40 tasks × 3 trials = 360 episodes, finished 2026-11-25 at about 15:08 ET. 0 infrastructure errors. $58.72 API-equivalent in all, including the simulated customer.
+
+Agent cost below is the agent alone (`tools/agent_cost.py`, §13 prices). It equals the CLI's own cost for each agent process.
+
+| arm | agent | pass^1 [95% CI] | pass^3 [95% CI] | agent $ / conversation | agent $ / solved conversation |
+|---|---|---|---|---|---|
+| B (empty catalog) | Opus | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 0.1770 | 0.1770 |
+| C:opus (`tel-o` skills) | Opus | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 0.1912 | 0.1912 |
+| C:small (`tel-o` skills) | Haiku | 0.975 [0.933, 1.000] | 0.950 [0.875, 1.000] | 0.0074 | 0.0076 |
+
+**Predictions against outcomes** (pass^1, paired over the 40 tasks):
+
+| quantity | predicted | observed | verdict |
+|---|---|---|---|
+| pass^1 of B (Opus alone) | about 0.90 (0.80 to 0.97) | 1.000 | wrong: above the range. Opus solved all 120 conversations |
+| C:opus − B | about +0.05 (−0.02 to +0.12); CI may include 0 | 0.000 [0.000, 0.000] | inside the range, below the point estimate. With B at 1.000 there was no room to gain |
+| C:small − B | about +0.05 (−0.05 to +0.12) | −0.025 [−0.067, 0.000] | inside the range, but the sign is wrong: Haiku with Opus's skills was slightly behind Opus alone |
+| pass^1 of C:small | 0.93 to 1.00 | 0.975 | as predicted |
+| agent cost, Opus arms ÷ C:small | about 30× (20× to 40×) | 23.9× (B), 25.8× (C:opus) | inside the range, below the point estimate |
+
+**Decision rules:**
+- **Parity: not met.** The lower end of the CI of C:small − B is −0.067, below −0.05. As the rule says, the report gives the measured gap and compares cost per solved conversation:
+  - Gap: −2.5 points pass^1 [−6.7, 0.0]; −5.0 points pass^3 [−12.5, 0.0].
+  - Cost per solved conversation: $0.0076 (Haiku with Opus's skills) against $0.1770 (Opus alone), 23× less.
+- **Skills help the writer too: not met.** The CI of C:opus − B is [0.000, 0.000]. Both arms solved everything, so this test can't show a gain for Opus.
+- **Replication: no drift.** C:small reached 0.975 here against 0.983 for the same configuration in `tel-test`, a difference of 0.008.
+- **Cost:** the measured ratio, about 24×, replaces the §13 estimate of 33×.
+
+**Exploratory (not pre-registered):**
+- **Haiku's misses.** All three are MMS tasks with the Hard customer persona: two tasks, one of them missed twice. On every other task Haiku with Opus's skills matched Opus.
+  - `[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Hard]`, trials 0 and 1
+  - `[mms_issue]airplane_mode_on|bad_network_preference|break_app_both_permissions|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Hard]`, trial 1
+- **Why the measured ratio is below the estimate.** Opus used fewer tokens per conversation than Haiku did.
+
+  | per conversation | Opus (B) | Haiku (C:small) |
+  |---|---|---|
+  | API calls | 10.4 | 12.8 |
+  | cache-read tokens | 168K | 239K |
+  | output tokens | 1.5K | 2.8K |
+
+  Priced at Opus rates, Haiku's token counts in this run would cost $0.248 per conversation, which reproduces the §13 estimate. So the estimate's error came from the token counts, not the prices.
+- **Skills on Opus** added 8% to its agent cost (C:opus against B), with no measurable gain on this test.
+- **Cross-run comparison (not paired).** `tel-test`'s Haiku without skills scored 0.775. With Opus's skills Haiku reached 0.975 here and 0.983 there. That closes about 89–92% of the gap to Opus's 1.000, at about 1/24 of Opus's agent cost.
+- **Payback, against the measured Opus cost.** Haiku with the skills saves about $0.170 per conversation. The $57.21 learning run (`tel-o`) pays back after about 340 conversations.
+- **Limits.**
+  - Opus is at the ceiling on these 40 tasks. The run can't say whether skills would help Opus on harder tasks, or how large the Opus–Haiku gap would be there.
+  - One domain (telecom), one benchmark.
