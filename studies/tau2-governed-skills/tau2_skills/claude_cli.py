@@ -7,6 +7,7 @@ import os
 import queue
 import re
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -223,7 +224,10 @@ def _kill_tree(proc: subprocess.Popen) -> None:
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
-        proc.kill()
+        try:                            # the session started with start_new_session=True
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
 
 
 class ClaudeSession:
@@ -249,7 +253,7 @@ class ClaudeSession:
         self.started = time.time()
         self.proc = subprocess.Popen(cfg.cmd + args, cwd=str(cwd), env=child_env,
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
+                                     stderr=subprocess.PIPE, start_new_session=os.name != "nt")
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
 

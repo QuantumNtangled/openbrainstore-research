@@ -1,0 +1,37 @@
+# Offline tests for every study, on Windows, macOS and Linux. They use the scripted fake
+# Claude Code CLI, so no model is called and no login or key is needed.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tau2-governed-skills:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: studies/tau2-governed-skills
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Set up the study
+        run: python bootstrap.py --venv "$RUNNER_TEMP/venv"
+      - name: Offline tests
+        run: |
+          V="$RUNNER_TEMP/venv"
+          if [ -x "$V/bin/python" ]; then PY="$V/bin/python"; else PY="$V/Scripts/python.exe"; fi
+          "$PY" -m pytest tests -q

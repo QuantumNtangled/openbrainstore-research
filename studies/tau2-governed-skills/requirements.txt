@@ -1,6 +1,8 @@
-# Installed by setup.ps1 from this directory (paths are relative to it).
+# Installed by bootstrap.py from this folder (paths are relative to it).
+# τ²-bench v1.0.1, cloned into vendor/ by bootstrap.py
 -e ./vendor/tau2-bench
--e ../..
+# OpenBrainStore, from the public core repo, pinned to the commit the study was checked against
+openbrainstore @ git+https://github.com/QuantumNtangled/openbrainstore-core@5d41efb7b4e21f927f823e9e59cc8bd7604bd9ad
 # tau2 imports audioop, which Python 3.13 removed
 audioop-lts; python_version >= "3.13"
 pytest>=8
