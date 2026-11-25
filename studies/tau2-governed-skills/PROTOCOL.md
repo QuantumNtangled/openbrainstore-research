@@ -360,3 +360,20 @@ human seat.
   - Round 3 was rejected: the candidate scored 0.532, against a re-measure of 0.712.
   - The round-3 batch again contained the device-tools misreading, now as the guardrail `device-checks-are-tool-calls` ("Run device diagnostics and fixes with tools, not manual steps for the customer"). That makes three rounds out of three.
   - The run used 3,111 Claude invocations. Its final catalog is empty, so gate-only C on TEST is the same configuration as arm B.
+- **Reviewed (`tel-hr`), round 3: rejected at the ceiling.**
+  - The reviewer-edited checklist scored 0.950, against a re-measure of 0.932 for the round-1 set. That's a gain of 0.018, under the 0.058 floor.
+  - The round-1 set itself scored 0.896 when it was promoted and 0.932 on this re-measure, with nothing changed: another sign of drift.
+  - Final promoted set: `guardrail:use-device-tools-not-manual-steps@v2` (the reviewer's edit) and `procedure:data-limit-refuel-check@v1` (approved as written). Train score at promotion was 0.896.
+  - The run used 1,778 Claude invocations. Rounds 0 and 1 were shared with `tel-h` through `--seed-from`, so they aren't counted again.
+- **Opus round 3, re-checked:** its screened proposal `pre-transfer-settings-audit` matched only `4g_5g_preferred`, the same false positive as `tel-hr` round 1.
+
+### Training phase: summary (2026-11-24)
+
+| run | improver | review | promoted | train score of final set |
+|---|---|---|---|---|
+| `tel-h` | Haiku | gate only | nothing; rounds 1–3 rejected (0.360, 0.450, 0.532 against re-measures of 0.703, 0.694, 0.712) | n/a (empty, = arm B) |
+| `tel-hr` | Haiku | human + gate | round 1: 1 edited guardrail + 1 approved procedure | 0.896 (re-measured 0.932) |
+| `tel-o` | Opus | gate only | round 1: 2 guardrails | 0.977 (re-measured 0.973) |
+
+- Both runs that promoted anything did so in round 1 and then hit the ceiling. Their later candidates gained 1.8 to 2.3 points, under floors of 5.8 to 6.9.
+- Gate-only Haiku wrote the same wrong premise (the agent operates the customer's phone) in all three rounds. The gate kept it out, but nothing useful got in either.
