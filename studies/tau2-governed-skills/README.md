@@ -136,8 +136,15 @@ python -m tau2_skills learn --run tel-o  --domain telecom --trials 3 --rounds 3 
 # Held-out (test) split: no skills against the three approved catalogs, interleaved
 python -m tau2_skills evaluate --run tel-test --domain telecom --catalog rev=runs/tel-hr/learn/obs --catalog orev=runs/tel-or/learn/obs --catalog opus=runs/tel-o/learn/obs --arms B,C:rev,C:orev,C:opus --k 3 --user-model claude-sonnet-5-5 --concurrency 3 --stop-at-utilization 0.7 --max-invocations 1600 --max-run-usd 80
 
+# Follow-up on the test split: Opus as the agent, with and without Opus's skills, next to
+# Haiku with Opus's skills (PROTOCOL.md §15)
+python -m tau2_skills evaluate --run tel-test-opus --domain telecom --agent-model claude-opus-5-5 --catalog opus=runs/tel-o/learn/obs --catalog small=runs/tel-o/learn/obs --arms B,C:opus,C:small --arm-model C:small=claude-haiku-5-5 --k 3 --user-model claude-sonnet-5-5 --concurrency 3 --stop-at-utilization 0.7 --max-invocations 1400 --max-run-usd 120
+
 # Rebuild a summary from the episode files at any time
 python -m tau2_skills summarize --run tel-test --arms B,C:rev,C:orev,C:opus --k 3
+
+# Agent-only token cost per conversation for each arm, at list API prices
+python tools/agent_cost.py tel-test-opus
 ```
 
 `--review` pauses each round after the automatic screens and writes `rounds/<r>/review.md`.
