@@ -12,6 +12,14 @@ def main() -> None:
     sub = p.add_subparsers(dest="command", required=True)
     from .harness import add_common_args
 
+    def hosted_args(sp):
+        from .obs import HOSTED_URL
+        sp.add_argument("--obs-url", nargs="?", const=HOSTED_URL, default=None, metavar="URL",
+                        help=f"serve arm C from your own hosted OpenBrainStore account instead of a "
+                             f"local catalog (bare flag: {HOSTED_URL}); arms A and C only")
+        sp.add_argument("--obs-key-env", default="OBS_AGENT_KEY", metavar="NAME",
+                        help="environment variable that holds your OpenBrainStore agent key")
+
     def task_args(sp):
         sp.add_argument("--task-ids", nargs="*", default=None, help="explicit task ids (must be in the split)")
         sp.add_argument("--sample-seed", type=int, default=0, help="seed for --*-limit sampling")
@@ -55,6 +63,7 @@ def main() -> None:
                          "C:NAME and D:NAME use catalog NAME, and plain C/D use the unnamed one")
     sp.add_argument("--recall", action="store_true", help="also offer OBS recall in arms B and C")
     sp.add_argument("--arm-order", default="interleave", choices=["interleave", "sequential"])
+    hosted_args(sp)
 
     sp = sub.add_parser("summarize", help="rebuild results/<run>/summary.* from episode files")
     sp.add_argument("--run", required=True)
@@ -74,6 +83,7 @@ def main() -> None:
     sp.add_argument("--trials", type=int, default=1)
     sp.add_argument("--catalog", default=None, help="OBS data dir to serve (e.g. runs/<run>/learn/obs)")
     sp.add_argument("--catalog-import", default=None, help="directory with INDEX.md + item files")
+    hosted_args(sp)
 
     sp = sub.add_parser("estimate", help="token / invocation / API-equivalent cost estimate")
     sp.add_argument("--cc-overhead", type=int, default=6_000,

@@ -31,6 +31,16 @@ def obs_mcp_server(data_dir: Path) -> dict:
             "args": ["-m", "openbrainstore.cli", "serve"], "env": obs_env(data_dir)}
 
 
+HOSTED_URL = "https://openbrainstore.com/mcp"
+
+
+def obs_http_server(url: str, key_env: str) -> dict:
+    """The --mcp-config entry for a hosted OBS (your own account), authenticated with an agent
+    key. The key itself is never written anywhere: the config holds `${KEY_ENV}`, which Claude
+    Code expands from its environment when it connects."""
+    return {"type": "http", "url": url, "headers": {"Authorization": "Bearer ${" + key_env + "}"}}
+
+
 class ObsStore:
     def __init__(self, data_dir: Path, user: str = OBS_USER):
         self.data_dir = Path(data_dir)
@@ -114,10 +124,12 @@ class ObsStore:
                 return catalog.list_items(b, self.user, status=status, include_body=True)
 
     def history(self, slug: str) -> list[dict]:
-        with self._env():
-            catalog, _, get_backend = self._mods()
-            with get_backend() as b:
-                return catalog.item_versions(b, self.user, slug)["history"]
+        """An item's add/promote/reject history, from its canonical state.json blob."""
+        import json
+        p = self._catalog_blobs() / slug / "state.json"
+        if not p.exists():
+            return []
+        return json.loads(p.read_text(encoding="utf-8")).get("history", [])
 
     def stats(self) -> list[dict]:
         with self._env():

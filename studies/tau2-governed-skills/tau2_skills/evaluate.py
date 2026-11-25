@@ -11,6 +11,7 @@ eval/C-rev and eval/C-opus). Plain C and D use the unnamed --catalog, as before.
 
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 
@@ -97,6 +98,40 @@ def prepare_arm(key: str, edir: Path, catalog: "ObsStore | None", recall: bool) 
     return ArmSetup(key, skills_md=path.read_text(encoding="utf-8"))
 
 
+def hosted_arm(key: str, args) -> ArmSetup:
+    """Arm C served by your own hosted OpenBrainStore account (--obs-url). The agent sees
+    whatever that account's catalog gives the agent key named by --obs-key-env, so the
+    catalog can't be frozen the way a local one is; the summary records that."""
+    if key == "A":
+        return ArmSetup("A")
+    if key != "C":
+        raise SystemExit(f"--obs-url runs arms A and C only, not {key}: an empty catalog (B), "
+                         "named catalogs and prompt-inlined skills (D) need local OBS")
+    if not os.environ.get(args.obs_key_env):
+        raise SystemExit(f"set {args.obs_key_env} to an OpenBrainStore agent key with catalog:read "
+                         "(web app > Agents > Create key); it is read from the environment only")
+    tools = ("agent_startup", "get_skill") + (("recall",) if getattr(args, "recall", False) else ())
+    return ArmSetup("C", obs_url=args.obs_url, obs_key_env=args.obs_key_env, obs_tools=tools)
+
+
+def evaluate_hosted(args, arms: list[str]) -> None:
+    setups = {a: hosted_arm(a, args) for a in arms}
+    h = build_harness(args)
+    edir = h.run_dir / "eval"
+    test = load_split_tasks(args.domain, "test", limit=args.test_limit, seed=args.sample_seed,
+                            only=args.task_ids)
+    if args.arm_order == "interleave":
+        for task in test:
+            for a in arms:
+                h.batch([task], args.k, setups[a], edir / a, extra={"split": "test"})
+    else:
+        for a in arms:
+            h.batch(test, args.k, setups[a], edir / a, extra={"split": "test"})
+    write_summary(args.run, h.run_dir, arms, args.k,
+                  extra={"catalog": {"hosted": args.obs_url, "frozen": False},
+                         "claude_invocations": h.budget.n})
+
+
 def catalog_snapshot(catalog: ObsStore) -> dict:
     items = [i for i in catalog.items(status="promoted") if i["kind"] != "agent"]
     refs = sorted(i["ref"] for i in items)
@@ -106,6 +141,10 @@ def catalog_snapshot(catalog: ObsStore) -> dict:
 
 def cmd_evaluate(args) -> None:
     arms = parse_arms(args.arms)
+    if getattr(args, "obs_url", None):
+        if args.arms == "A,B,C,D":          # the local default; hosted runs A and C
+            arms = ["A", "C"]
+        return evaluate_hosted(args, arms)
     h = build_harness(args)
     edir = h.run_dir / "eval"
     dirs = parse_catalogs(args.catalog, h.run_dir / "learn" / "obs")

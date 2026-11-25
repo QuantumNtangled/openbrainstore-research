@@ -18,7 +18,7 @@ from tau2.runner.build import build_environment
 
 from .claude_cli import BudgetExceeded, ClaudeConfig, InvocationBudget
 from .common import OBS_ALL_TOOLS, safe_name, write_json
-from .obs import obs_mcp_server
+from .obs import obs_http_server, obs_mcp_server
 from .participants import ClaudeCodeAgent, ClaudeCodeUser, EngineSpec
 from .prompts import agent_append_prompt
 from .relay import get_relay
@@ -35,10 +35,12 @@ class ArmSetup:
     obs_dir: Path | None = None        # OBS data dir; None = no OBS tools
     obs_tools: tuple = ("agent_startup", "get_skill")
     skills_md: str | None = None       # arm D: promoted skill text in the prompt
+    obs_url: str | None = None         # hosted OBS instead of a local data dir
+    obs_key_env: str = "OBS_AGENT_KEY"  # env var holding the hosted agent key
 
     @property
     def obs(self) -> bool:
-        return self.obs_dir is not None
+        return self.obs_dir is not None or self.obs_url is not None
 
 
 @dataclass
@@ -107,7 +109,8 @@ def run_episode(ctx: EpisodeContext) -> dict:
         role="agent", cfg=ctx.agent_cfg, workdir=ctx.workdir / "agent", log_dir=ctx.log_dir,
         budget=ctx.budget, label=f"{arm.name}/{task.id}/t{ctx.trial}", relay=relay,
         relay_key=f"{key}-a", tau2_tools=env.get_tools(),
-        obs_server=obs_mcp_server(arm.obs_dir) if arm.obs else None,
+        obs_server=(obs_http_server(arm.obs_url, arm.obs_key_env) if arm.obs_url
+                    else obs_mcp_server(arm.obs_dir) if arm.obs else None),
         obs_tools=tuple(arm.obs_tools) if arm.obs else (),
         obs_disallowed=tuple(t for t in OBS_ALL_TOOLS if t not in arm.obs_tools) if arm.obs else (),
         append_prompt=agent_append_prompt(env.get_policy(), obs=arm.obs,

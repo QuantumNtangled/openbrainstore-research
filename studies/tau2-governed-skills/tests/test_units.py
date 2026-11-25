@@ -82,3 +82,27 @@ def test_redact_masks_test_only_strings_and_screen_comes_back_clean():
     assert "3821016478 " not in out and "Mia" not in out and "Garcia" not in out and "#W1234567" not in out
     assert "38210164780" in out          # boundary: a longer number is not touched
     assert screen(out, dl, generic=False) == []
+
+
+def test_hosted_obs_never_holds_the_key(monkeypatch):
+    """--obs-url: the agent's MCP config carries a ${VAR} placeholder that Claude Code expands
+    from its environment, so the key never lands in a run's files; only A and C run hosted."""
+    from types import SimpleNamespace
+
+    from tau2_skills.evaluate import hosted_arm
+    from tau2_skills.obs import HOSTED_URL, obs_http_server
+
+    cfg = obs_http_server(HOSTED_URL, "OBS_AGENT_KEY")
+    assert cfg == {"type": "http", "url": "https://openbrainstore.com/mcp",
+                   "headers": {"Authorization": "Bearer ${OBS_AGENT_KEY}"}}
+    args = SimpleNamespace(obs_url=HOSTED_URL, obs_key_env="OBS_TEST_KEY", recall=False)
+    monkeypatch.delenv("OBS_TEST_KEY", raising=False)
+    with pytest.raises(SystemExit):
+        hosted_arm("C", args)                         # no key in the environment
+    monkeypatch.setenv("OBS_TEST_KEY", "obs_sk_dummy")
+    for bad in ("B", "C:rev", "D"):
+        with pytest.raises(SystemExit):
+            hosted_arm(bad, args)
+    arm = hosted_arm("C", args)
+    assert arm.obs and arm.obs_url == HOSTED_URL and arm.obs_dir is None
+    assert arm.obs_key_env == "OBS_TEST_KEY" and not hosted_arm("A", args).obs
