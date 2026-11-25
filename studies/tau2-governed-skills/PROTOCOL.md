@@ -356,3 +356,7 @@ human seat.
   - The round-3 proposal wrote "4G/5G preferred mode" instead of the literal enum value, and passed.
   - Here the value is harmless domain vocabulary, but this shows the screen catches exact strings, not meaning.
   - A reviewer, or a semantic check, covers what a string match misses.
+- **Gate only, Haiku (`tel-h`): finished with nothing promoted.**
+  - Round 3 was rejected: the candidate scored 0.532, against a re-measure of 0.712.
+  - The round-3 batch again contained the device-tools misreading, now as the guardrail `device-checks-are-tool-calls` ("Run device diagnostics and fixes with tools, not manual steps for the customer"). That makes three rounds out of three.
+  - The run used 3,111 Claude invocations. Its final catalog is empty, so gate-only C on TEST is the same configuration as arm B.
