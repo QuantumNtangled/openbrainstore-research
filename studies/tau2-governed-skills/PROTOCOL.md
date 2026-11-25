@@ -449,3 +449,12 @@ human seat.
     - It offers a plan change, but the agent's 13 tools can't apply one.
     - The rewrite drops the plan-change option, states the 2GB refuel cap, and has the customer re-check on their own device.
   - **Note for the report:** the reviewer was given which tools belong to the agent and which to the customer, which any product reviewer would have from the agent's tool manifest. That list is what makes the device-tools misreading detectable. The improver saw only the policy and the transcripts.
+- **Interruption and fix (2026-11-25, 00:08).** The run stopped after the full candidate measurement (222/222) and 21 of the 222 current-set re-measures.
+  - Cause: one 529 "overloaded" reply to the user simulator matched the rate-limit pattern. The harness then took the seven-day window's reset (Nov 28) as the pause, and the pacer stopped the run. Plan utilization was 15%.
+  - Fix (commit 6e2ba98): a window's reset is used only when that window is actually exhausted; otherwise the run backs off and retries. A unit test covers it.
+  - The run resumed from its checkpoint with the same command. No episode was re-run or dropped, and nothing about the arms changed.
+- **`tel-or` round-1 candidate, measured before the gate's comparison: train pass^1 = 0.964** (222 episodes; it loaded a skill in 82% of them). For reference, on the same 74 tasks × 3:
+  - baseline 0.626
+  - `tel-hr` round-1 candidate (human + AI-assisted review) 0.896
+  - `tel-o` final (Opus teacher) 0.977
+  - The 6.8-point gap to `tel-hr` is about the size of the run-to-run drift recorded above, so it isn't evidence by itself. The interleaved TEST evaluation (§13) is the comparison that counts.
