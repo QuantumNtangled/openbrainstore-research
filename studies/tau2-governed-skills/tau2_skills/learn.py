@@ -23,6 +23,7 @@ from .episode import ArmSetup
 from .harness import build_harness
 from .improver import KINDS, build_prompt, call as call_improver
 from .leakage import build_denylist, redact, screen, test_only_denylist
+from . import reviewer as model_reviewer
 from .metrics import mean_success, per_trial_means, trial_sd, valid
 from .obs import ObsStore
 from .splits import load_split_tasks
@@ -133,10 +134,51 @@ def _review(rdir: Path, r: int, proposals: list[dict], rows: list[dict], drafts:
     return new_drafts, rows
 
 
+def _model_review(rdir: Path, rows: list[dict], proposals: list[dict], h, args, env_info: dict,
+                  catalog_md: str, edit_log: list[dict], denylist) -> None:
+    """Fill rounds/<r>/review_decisions.json from a model reviewer (cached in reviewer_output.json)."""
+    import dataclasses
+    by_slug = {p.get("slug"): p for p in proposals}
+    items = [{**row, "body": (by_slug.get(row["slug"]) or {}).get("body", "")}
+             for row in rows if "verdict" not in row and row.get("ref")]
+    out_path = rdir / "reviewer_output.json"
+    cached = read_json(out_path)
+    if cached is None:
+        cfg = dataclasses.replace(h.improver_cfg, model=args.reviewer_model, effort=args.reviewer_effort)
+        prompt = model_reviewer.build_prompt(args.domain, env_info["policy"], env_info["agent_tools"],
+                                             env_info["user_tools"], catalog_md, edit_log, items)
+        try:
+            raw, ev = model_reviewer.call(cfg, prompt, h.workdir / f"reviewer-{rdir.name}", rdir,
+                                          h.budget, f"reviewer/{rdir.name}")
+        except RateLimited as e:
+            h.pacer.trip(e)
+            raise SystemExit(f"reviewer rate limited ({e}); rerun the same command to resume")
+        except CLIError as e:
+            raise SystemExit(f"reviewer failed: {e}")
+        if not raw:
+            raise SystemExit(f"reviewer reply had no decisions; see {rdir / 'reviewer.stdout.json'}")
+        cached = {"decisions": raw, "result": ev.get("result"), "usage": ev.get("usage"),
+                  "total_cost_usd": ev.get("total_cost_usd"), "model": cfg.model}
+        write_json(out_path, cached)
+    write_json(rdir / "review_decisions.json", model_reviewer.decisions_file(
+        cached["decisions"], items, args.reviewer, cached["model"], lambda t: screen(t, denylist)))
+
+
 def cmd_learn(args) -> None:
+    if getattr(args, "reviewer_model", None):
+        args.review = True
+    if hasattr(args, "reviewer") and not args.reviewer:
+        args.reviewer = f"model:{args.reviewer_model}" if getattr(args, "reviewer_model", None) else "human:reviewer"
     h = build_harness(args, improver_model=args.improver_model, improver_effort=args.improver_effort)
     from tau2.runner import build_environment
-    policy = build_environment(args.domain).get_policy()
+    env = build_environment(args.domain)
+    policy = env.get_policy()
+    env_info = {"policy": policy, "agent_tools": env.get_tools_description("assistant"),
+                "user_tools": None}
+    try:
+        env_info["user_tools"] = env.get_tools_description("user")
+    except ValueError:
+        pass
     ldir = h.run_dir / "learn"
     state_path = ldir / "state.json"
     state = read_json(state_path, {}) or {}
@@ -280,6 +322,11 @@ def cmd_learn(args) -> None:
         if getattr(args, "review", False) and not reviewed:
             out = _review(rdir, r, cached["proposals"], rows, drafts, canon, cur_score, floor,
                           args.reviewer)
+            if out is None and getattr(args, "reviewer_model", None):
+                _model_review(rdir, rows, cached["proposals"], h, args, env_info,
+                              canon.promoted_markdown(), edit_log, denylist)
+                out = _review(rdir, r, cached["proposals"], rows, drafts, canon, cur_score, floor,
+                              args.reviewer)
             if out is None:
                 print(f"round {r}: awaiting review -> {rdir / 'review.md'} "
                       f"(write {rdir / 'review_decisions.json'}, then rerun)", flush=True)

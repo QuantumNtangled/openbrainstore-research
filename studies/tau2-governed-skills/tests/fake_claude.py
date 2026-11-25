@@ -239,10 +239,29 @@ class Fake:
               "usage": {"input_tokens": len(prompt) // 4, "output_tokens": 600}, "duration_ms": 5})
 
 
+def reviewer(fake: "Fake") -> None:
+    """Model reviewer: edits every proposal (keeping MARKER, so the agent still passes), adding
+    the string in FAKE_REVIEW_LEAK when set, to exercise the leakage screen on edits."""
+    prompt = sys.stdin.buffer.read().decode("utf-8")
+    leak = os.environ.get("FAKE_REVIEW_LEAK", "")
+    decisions = {slug: {"decision": "edit", "note": "fake reviewer tightened the wording",
+                        "title": "Reviewed: finish confirmed writes",
+                        "when_to_use": "Whenever a customer has confirmed a write action.",
+                        "body": f"Apply the {MARKER}: call the write tool before replying. {leak}".strip()}
+                 for slug in re.findall(r"^### Proposal: (\S+)", prompt, re.M)}
+    text = "```json\n" + json.dumps({"decisions": decisions}, indent=1) + "\n```"
+    emit({"type": "result", "subtype": "success", "is_error": False, "result": text,
+          "session_id": fake.sid, "num_turns": 1, "total_cost_usd": 0.001,
+          "usage": {"input_tokens": len(prompt) // 4, "output_tokens": 300}, "duration_ms": 5})
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     args = parse_args(sys.argv[1:])
     fake = Fake(args)
+    if "You review proposed catalog items" in fake.prompt:
+        reviewer(fake)
+        return
     if fake.role == "improver" or args.input_format != "stream-json":
         fake.improver()
         return

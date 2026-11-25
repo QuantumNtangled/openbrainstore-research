@@ -33,7 +33,12 @@ def main() -> None:
     sp.add_argument("--review", action="store_true",
                     help="reviewed arm: pause each round for a human approve/edit/reject decision "
                          "per proposal (rounds/<r>/review_decisions.json) before the gate")
-    sp.add_argument("--reviewer", default="human:reviewer", help="recorded as who reviewed")
+    sp.add_argument("--reviewer", default=None,
+                    help="recorded as who reviewed (default human:reviewer, or model:<M> with --reviewer-model)")
+    sp.add_argument("--reviewer-model", default=None,
+                    help="a model takes the reviewer's seat (implies --review): it decides approve, "
+                         "edit or reject per proposal instead of pausing for a person")
+    sp.add_argument("--reviewer-effort", default="medium")
     sp.add_argument("--seed-from", default=None,
                     help="another learn run with the same config: reuse its round-0 baseline and "
                          "its round-1 improver proposals, so this run starts from the same point")
