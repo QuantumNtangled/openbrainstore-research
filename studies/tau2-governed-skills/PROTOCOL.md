@@ -263,62 +263,55 @@ to measure how much one episode moves the plan's utilization.
 *To be filled in after the train baseline (round 0) and the learning rounds, and before any
 TEST episode. Commit this section before running `evaluate`.*
 
-**DRAFT, awaiting the reviewer's agreement. No TEST episode has been run.**
+**Agreed by the reviewer on 2026-11-25, as a three-arm run.** A six-arm draft (A, B, C:auto, C:rev, C:orev, C:opus; 960 episodes) was offered first. The reviewer chose to run only the three governed catalogs on the held-out tasks. No TEST episode had been run before this entry was committed.
 
 The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-or`, `tel-o`; results in §14).
 
-**Arms.** All arms run in one interleaved `evaluate` run: arm by arm within each task, so drift falls on every arm equally.
+**Arms.** All arms run in one interleaved `evaluate` run (`--run tel-test`): arm by arm within each task, so drift falls on every arm equally.
 
-| arm | catalog | how it got there |
+| arm | catalog (frozen refs) | how it got there |
 |---|---|---|
-| A | no OBS | plain Haiku with the tau2 prompt |
-| B | OBS, empty | also stands for **gate-only Haiku**, whose final catalog is empty (§14) |
-| C:auto | Haiku's round-1 batch as written: `use-device-tools-not-manual-steps@v1` + `data-limit-refuel-check@v1` | **auto-approval**: the agent's own proposals go live with no gate and no review. Only the leakage screen applies, because it protects the test set. |
-| C:rev | `tel-hr` final: the reviewer's edit `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v1` | **human review + gate** |
-| C:orev | `tel-or` final: `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v2`, both edited by Opus (train 0.964) | **model review + gate**: Opus 5.5 in the reviewer's seat for Haiku's proposals, with the same inputs and the same gate |
-| C:opus | `tel-o` final: `always-check-data-limit-on-data-issues@v1` + `customer-runs-device-checks-no-early-transfer@v1` | **stronger skill writer + gate** |
+| C:rev | `tel-hr` final: `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v1` (train 0.896) | **human review + gate**: Haiku proposed, the reviewer (with AI help) approved or edited, the gate measured |
+| C:orev | `tel-or` final: `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v2` (train 0.964) | **model review + gate**: Haiku proposed, Opus 5.5 in the reviewer's seat with the same inputs, the same gate |
+| C:opus | `tel-o` final: `always-check-data-limit-on-data-issues@v1` + `customer-runs-device-checks-no-early-transfer@v1` (train 0.977) | **stronger skill writer + gate**: Opus proposed, gate only |
 
-- **Arm D is not run.** Every promoted item that matters here is a guardrail, and guardrails are already inlined in `agent_startup`. So C − D would mostly measure tool overhead. It's left for a follow-up.
-- **The `C:auto` catalog** is built from `runs/tel-h/learn/rounds/r1/improver_output.json`, exactly as written. Its items are promoted with `by=study:auto-approve` into a fresh data dir.
+**Not run, and what that means for the report.**
+- **No baseline arm (A or B) runs on TEST.** This run compares the three governed catalogs with each other. It does not measure the gain over no skills on held-out tasks. The only no-skills measurements are the train re-measures (0.626–0.712), which are on a different task set and must not be subtracted from TEST scores. The report states the train gains as train gains and the TEST result as a comparison between approval paths.
+- **No C:auto arm.** The harm of auto-approval rests on the train measurement (Haiku's round-1 batch scored 0.360 against a 0.676 re-measure, §14).
+- **No arm D**, as in the draft: every promoted item here is a guardrail, already inlined by `agent_startup`.
+- A baseline added later would not be interleaved with these arms, so drift (±4–8 points between re-measures, §14) would fall on it alone. That is a weaker comparison and the report would say so.
 
 **Setup.**
-- Telecom TEST: 40 tasks, k = 4 trials per task per arm, so 6 arms × 160 = 960 episodes.
-- Agent: `claude-haiku-5-5`, effort medium. User simulator: `claude-sonnet-5-5`, effort medium.
-  - The simulator is the same as in training. It differs from §6's default (Haiku), which was changed before the learning runs.
+- Telecom TEST: 40 tasks, k = 4 trials per task per arm, so 3 arms × 160 = 480 episodes.
+- Agent: `claude-haiku-5-5`, effort medium. User simulator: `claude-sonnet-5-5`, effort medium (the same as in training; §6's default is Haiku).
 - Concurrency 4, so each task's 4 trials run in one wave. `--stop-at-utilization 0.7`.
 
 **Primary comparisons** (pass^1, paired over tasks, 95% bootstrap CI as in §9):
-1. **C:rev − B**: what human review adds over gate-only, for Haiku-written skills.
-2. **C:auto − B**: what auto-approval does.
-3. **C:orev − B**: what a model reviewer adds over gate-only, for the same Haiku proposals.
-4. **C:opus − B**: what a stronger skill writer does, with gate-only approval.
+1. **C:rev − C:orev**: human (AI-assisted) review against model review, for the same Haiku proposals.
+2. **C:opus − C:orev**: a stronger skill writer with gate-only approval against a weaker writer whose proposals a strong model reviewed.
 
 Secondary:
-- C:rev − C:auto: review against auto-approval of the same round-1 proposals.
-- C:rev − C:orev: human (AI-assisted) review against AI review alone.
 - C:opus − C:rev.
-- B − A.
-- pass^4 for every arm.
+- pass^1 of each arm with its 95% CI, and pass^4 of each arm.
+- The tasks where the arms disagree most, read by hand for the report.
 
-**Predictions,** from the train results (no-skills re-measures 0.676–0.712; C:auto set 0.360; C:rev set 0.896 and 0.932; C:opus set 0.977 and 0.973). The test tasks are new, so some shrinkage is expected.
+**Predictions,** from the train results (C:rev set 0.896 and 0.932; C:orev 0.964 and 0.955; C:opus 0.977 and 0.973). The test tasks are new, so some shrinkage is expected.
 
-| comparison | expected pass^1 difference |
+| quantity | expected |
 |---|---|
-| C:rev − B | about +0.15 (somewhere in +0.05 to +0.25); CI above 0 |
-| C:auto − B | about −0.25 (somewhere in −0.40 to −0.10); CI below 0 |
-| C:orev − B | about +0.15 (somewhere in +0.05 to +0.25); CI above 0, if Opus rejects or fixes the device-tools premise as the human review did |
-| C:opus − B | about +0.20 (somewhere in +0.10 to +0.30); CI above 0 |
-| C:opus − C:rev | positive but small; CI may include 0 |
-| B − A | within ±0.05 |
+| pass^1 of each arm | 0.75 to 0.95 |
+| C:rev − C:orev | within ±0.07; CI includes 0 |
+| C:opus − C:orev | within ±0.07; CI includes 0 |
+| C:opus − C:rev | small and positive, under +0.10; CI may include 0 |
 
-**Kill criteria** (decided now, reported whatever happens):
-- **Skills don't transfer:** if the 95% CIs of C:rev − B, C:orev − B and C:opus − B all include 0 or lie below it, the learned catalogs did not carry over to held-out tasks. The report says so.
-- **Auto-approval isn't harmful on held-out tasks:** if the CI of C:auto − B includes 0 or lies above it, the train-split harm did not generalize. The governance claim is then limited to the train split.
-- **Review adds nothing:** if C:rev − C:auto has a CI that includes 0, review made no difference on held-out tasks.
+**Decision rules** (decided now, reported whatever happens):
+- **Review path:** if the CI of C:rev − C:orev includes 0, human and model review produced catalogs that are indistinguishable on held-out tasks. If it excludes 0, the report names which reviewer did better and reads the disagreeing tasks to say why.
+- **Writer against reviewer:** if the CI of C:opus − C:orev includes 0, reviewing a weaker model's proposals matched letting a stronger model write them. If C:opus is clearly ahead, the report says review did not close the gap to a stronger writer.
+- **Shrinkage:** if any arm's TEST pass^1 is more than 0.15 below its train score, the report flags that the catalog fit the train tasks more than it generalized.
 
-Every catalog item passed the leakage screen when it was proposed. The reviewer's edits were screened by hand with the same screen.
+Every catalog item passed the leakage screen when it was proposed. The reviewers' edits (human and Opus) were screened with the same screen.
 
-- Date and commit of this entry: (filled in when agreed)
+- Date and commit of this entry: 2026-11-25, the commit that adds this text (see `git log -- PROTOCOL.md`).
 
 ## 14. Governance observations (for the report)
 
