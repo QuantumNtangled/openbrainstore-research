@@ -324,6 +324,46 @@ Every catalog item passed the leakage screen when it was proposed. The reviewers
 
 - Date and commit of this entry: 2026-11-25, the commit that adds this text (see `git log -- PROTOCOL.md`).
 
+### Results (TEST), recorded 2026-11-25
+
+Run `tel-test`: 4 arms × 40 tasks × 3 trials = 480 episodes, finished 2026-11-25 at about 11:35 ET. 0 infrastructure errors, 974 Claude Code invocations, about $23.45 API-equivalent.
+
+| arm | pass^1 [95% CI] | pass^3 [95% CI] | $ / episode |
+|---|---|---|---|
+| B (no skills) | 0.775 [0.675, 0.867] | 0.550 [0.400, 0.700] | 0.0429 |
+| C:rev (human review + gate) | 0.925 [0.875, 0.967] | 0.800 [0.675, 0.925] | 0.0524 |
+| C:orev (Opus review + gate) | 0.917 [0.867, 0.967] | 0.775 [0.650, 0.900] | 0.0516 |
+| C:opus (Opus writes + gate) | 0.983 [0.958, 1.000] | 0.950 [0.875, 1.000] | 0.0485 |
+
+**Predictions against outcomes** (pass^1, paired over the 40 tasks):
+
+| quantity | predicted | observed | verdict |
+|---|---|---|---|
+| C:rev − B | +0.15 (+0.05 to +0.25); CI above 0 | +0.150 [+0.067, +0.242] | as predicted |
+| C:orev − B | +0.15 (+0.05 to +0.25); CI above 0 | +0.142 [+0.067, +0.225] | as predicted |
+| C:opus − B | +0.20 (+0.10 to +0.30); CI above 0 | +0.208 [+0.125, +0.300] | as predicted |
+| C:rev − C:orev | within ±0.07; CI includes 0 | +0.008 [−0.042, +0.058] | as predicted |
+| C:opus − C:orev | within ±0.07; CI includes 0 | +0.067 [+0.025, +0.108] | size as predicted, but the CI excludes 0: the prediction that it would be too close to call was wrong |
+| C:opus − C:rev | small and positive, under +0.10; CI may include 0 | +0.058 [+0.008, +0.108] | as predicted |
+| pass^1 of each C arm | 0.75 to 0.95 | 0.925, 0.917, 0.983 | C:opus is above the range |
+| B (rough estimate, not registered) | 0.55 to 0.75 | 0.775 | slightly above |
+
+**Decision rules:**
+- **Skills don't transfer:** not met. All three CIs against B lie above 0, so every governed catalog carried over to held-out tasks.
+- **Review path:** the CI of C:rev − C:orev includes 0. Human (AI-assisted) review and Opus review produced catalogs that are indistinguishable on held-out tasks.
+- **Writer against reviewer:** C:opus is clearly ahead of C:orev (+0.067, CI +0.025 to +0.108). On this benchmark, reviewing a weaker model's proposals did not close the gap to having a stronger model write the skills.
+- **Shrinkage:** the train gains (against the same day's no-skills re-measure) were C:rev +0.220, C:orev +0.297 and C:opus +0.301. The TEST gains over B kept 68%, 48% and 69% of them. C:orev kept less than half, so the rule flags it: its catalog fit the practice tasks more than it generalized. Context for the report: C:orev missed the half mark by 0.006, and its train gain was measured against the lowest no-skills re-measure of the study (0.667).
+
+**Exploratory (not pre-registered):**
+- By issue type (pass^1, B → C:rev / C:orev / C:opus):
+  - MMS, 16 tasks: 0.62 → 0.88 / 0.81 / 0.96
+  - mobile data, 9 tasks: 0.78 → 0.93 / 0.96 / 1.00
+  - service, 15 tasks: 0.93 → 0.98 / 1.00 / 1.00
+  - The gains concentrate where the agent without skills was weakest.
+- No task got clearly worse with any catalog: no task has two or more fewer passes (of 3) than B.
+- Both of Opus's skills are guardrails, inlined in `agent_startup`, so its agents almost never call `get_skill` (rate 0.008). Each reviewed Haiku catalog includes a procedure, fetched in 64% (C:rev) and 61% (C:orev) of conversations. Format, always in context against fetched on demand, may explain part of the gap. This study doesn't test it.
+- Skills raised the API-equivalent cost per conversation by 13% (C:opus) to 22% (C:rev).
+
 ## 14. Governance observations (for the report)
 
 The study's gate promotes automatically (`by=study:gate`). The product puts a person
