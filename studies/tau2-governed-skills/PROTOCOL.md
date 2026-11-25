@@ -265,6 +265,8 @@ TEST episode. Commit this section before running `evaluate`.*
 
 **Agreed by the reviewer on 2026-11-25, as a three-arm run.** A six-arm draft (A, B, C:auto, C:rev, C:orev, C:opus; 960 episodes) was offered first. The reviewer chose to run only the three governed catalogs on the held-out tasks. No TEST episode had been run before this entry was committed.
 
+**Amendment, same day, before any result existed:** the reviewer changed the trials from 4 to 3 per task per arm. The first launch (k = 4) was stopped about a minute in, while its first four episodes were still running; none had finished, so no score was seen. Their partial logs are kept in `runs/tel-test/aborted-k4/` and are not used. Everything below is written for k = 3.
+
 The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-or`, `tel-o`; results in §14).
 
 **Arms.** All arms run in one interleaved `evaluate` run (`--run tel-test`): arm by arm within each task, so drift falls on every arm equally.
@@ -282,9 +284,9 @@ The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-or`, `tel-
 - A baseline added later would not be interleaved with these arms, so drift (±4–8 points between re-measures, §14) would fall on it alone. That is a weaker comparison and the report would say so.
 
 **Setup.**
-- Telecom TEST: 40 tasks, k = 4 trials per task per arm, so 3 arms × 160 = 480 episodes.
+- Telecom TEST: 40 tasks, k = 3 trials per task per arm, so 3 arms × 120 = 360 episodes.
 - Agent: `claude-haiku-5-5`, effort medium. User simulator: `claude-sonnet-5-5`, effort medium (the same as in training; §6's default is Haiku).
-- Concurrency 4, so each task's 4 trials run in one wave. `--stop-at-utilization 0.7`.
+- Concurrency 3, so each task's 3 trials run in one wave. `--stop-at-utilization 0.7`.
 
 **Primary comparisons** (pass^1, paired over tasks, 95% bootstrap CI as in §9):
 1. **C:rev − C:orev**: human (AI-assisted) review against model review, for the same Haiku proposals.
@@ -292,7 +294,7 @@ The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-or`, `tel-
 
 Secondary:
 - C:opus − C:rev.
-- pass^1 of each arm with its 95% CI, and pass^4 of each arm.
+- pass^1 of each arm with its 95% CI, and pass^3 of each arm.
 - The tasks where the arms disagree most, read by hand for the report.
 
 **Predictions,** from the train results (C:rev set 0.896 and 0.932; C:orev 0.964 and 0.955; C:opus 0.977 and 0.973). The test tasks are new, so some shrinkage is expected.
