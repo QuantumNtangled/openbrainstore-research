@@ -364,6 +364,53 @@ Run `tel-test`: 4 arms × 40 tasks × 3 trials = 480 episodes, finished 2026-11-
 - Both of Opus's skills are guardrails, inlined in `agent_startup`, so its agents almost never call `get_skill` (rate 0.008). Each reviewed Haiku catalog includes a procedure, fetched in 64% (C:rev) and 61% (C:orev) of conversations. Format, always in context against fetched on demand, may explain part of the gap. This study doesn't test it.
 - Skills raised the API-equivalent cost per conversation by 13% (C:opus) to 22% (C:rev).
 
+### Cost: small model with skills against a large model (added 2026-11-25 after the results; not pre-registered)
+
+**Correction to the exploratory cost line above.** Its +13% to +22% per conversation included the simulated customer (Sonnet 5.5). That's 85–90% of each conversation's bill, and a deployment doesn't pay it. Counting the agent alone, the skills added 11% (C:opus) to 18% (C:rev, C:orev).
+
+**Prices.** Anthropic's list API prices on 2026-11-25 (platform.claude.com pricing page), USD per million tokens:
+
+| model | input | output | cache read | 1-hour cache write |
+|---|---|---|---|---|
+| Haiku 5.5 (prompts up to 100K tokens) | 0.10 | 0.50 | 0.01 | 0.20 |
+| Sonnet 5.5 | 2 | 10 | 0.10 | 4 |
+| Opus 5.5 | 4 | 20 | 0.20 | 8 |
+
+- Claude Code writes the prompt cache with a 1-hour TTL.
+- No agent call in `tel-test` passed Haiku's 100K long-prompt threshold: the longest agent prompt averaged about 22.6K tokens.
+
+**Agent-only cost per conversation on TEST.**
+- Haiku is measured; these figures equal the CLI's own `modelUsage.costUSD`.
+- "Opus, same tokens" prices each episode's measured agent tokens at Opus rates. It's an estimate: Opus wasn't run as the agent.
+
+| arm | pass^1 | Haiku, measured | Opus, same tokens (estimate) | ratio |
+|---|---|---|---|---|
+| B | 0.775 | $0.00677 | $0.231 | 34× |
+| C:rev | 0.925 | $0.00798 | $0.265 | 33× |
+| C:orev | 0.917 | $0.00796 | $0.259 | 33× |
+| C:opus | 0.983 | $0.00750 | $0.250 | 33× |
+
+- **Per solved conversation,** Haiku costs $0.0087 without skills and $0.0076 with Opus's skills.
+- **Where the tokens go.** Per C:opus conversation, on average:
+  - 13.1 agent calls
+  - 249K cache-read tokens, most of them Claude Code's own system prompt, re-read on every call
+  - 17.7K cache-write tokens
+  - 2.9K output tokens
+- **Why the ratio is near-fixed.** With this mix, the ratio is set by the list-price ratios: 20× for cache reads, 40× for input, cache writes and output. It barely depends on the counts. If Opus used fewer turns, its cost would fall roughly in proportion.
+- **One-time cost of learning Opus's skills** (`tel-o`, all three rounds): $57.21 API-equivalent.
+  - Haiku agent: $8.52
+  - simulated customers: $47.80
+  - Opus as improver: $0.89
+  - Against an Opus agent without skills ($0.231 per conversation), Haiku with the skills saves about $0.224 per conversation, so the learning run pays back after about 255 conversations.
+- **For comparison, the other learning runs:**
+  - `tel-hr`: about $59.3, with Haiku as improver at $0.03
+  - `tel-or`: $58.97, including $0.30 of Opus review
+- **Limits.**
+  - Opus's success rate as the agent isn't known.
+  - The comparison claims only that Haiku with Opus-written skills reached 0.983 on TEST, at about 1/33 of the agent-token cost Opus would have on the same conversations.
+  - A measured Opus arm would need a new, pre-registered run.
+
+
 ## 14. Governance observations (for the report)
 
 The study's gate promotes automatically (`by=study:gate`). The product puts a person
