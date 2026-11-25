@@ -265,7 +265,7 @@ TEST episode. Commit this section before running `evaluate`.*
 
 **DRAFT, awaiting the reviewer's agreement. No TEST episode has been run.**
 
-The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-o`; results in §14).
+The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-or`, `tel-o`; results in §14).
 
 **Arms.** All arms run in one interleaved `evaluate` run: arm by arm within each task, so drift falls on every arm equally.
 
@@ -275,7 +275,7 @@ The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-o`; result
 | B | OBS, empty | also stands for **gate-only Haiku**, whose final catalog is empty (§14) |
 | C:auto | Haiku's round-1 batch as written: `use-device-tools-not-manual-steps@v1` + `data-limit-refuel-check@v1` | **auto-approval**: the agent's own proposals go live with no gate and no review. Only the leakage screen applies, because it protects the test set. |
 | C:rev | `tel-hr` final: the reviewer's edit `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v1` | **human review + gate** |
-| C:orev | `tel-or` final: 2 items, train 0.964 | **model review + gate**: Opus 5.5 in the reviewer's seat for Haiku's proposals, with the same inputs and the same gate |
+| C:orev | `tel-or` final: `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v2`, both edited by Opus (train 0.964) | **model review + gate**: Opus 5.5 in the reviewer's seat for Haiku's proposals, with the same inputs and the same gate |
 | C:opus | `tel-o` final: `always-check-data-limit-on-data-issues@v1` + `customer-runs-device-checks-no-early-transfer@v1` | **stronger skill writer + gate** |
 
 - **Arm D is not run.** Every promoted item that matters here is a guardrail, and guardrails are already inlined in `agent_startup`. So C − D would mostly measure tool overhead. It's left for a follow-up.
