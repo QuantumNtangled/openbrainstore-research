@@ -29,6 +29,9 @@ harness at `https://openbrainstore.com/mcp`. Each study's README shows how.
 
 ## License
 
-[PolyForm Small Business 1.0.0](LICENSE.md), the same as
-[openbrainstore-core](https://github.com/QuantumNtangled/openbrainstore-core). Benchmarks are
-downloaded from their own sources at setup and keep their own licenses.
+[Apache License 2.0](LICENSE); see [NOTICE](NOTICE). Use the code, protocols and records in
+your own research, commercial or not.
+
+The studies install other software under its own license: OpenBrainStore itself
+([openbrainstore-core](https://github.com/QuantumNtangled/openbrainstore-core), PolyForm Small
+Business 1.0.0) for local runs, and each benchmark from its own source at setup.
