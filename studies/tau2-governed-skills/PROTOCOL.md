@@ -263,11 +263,62 @@ to measure how much one episode moves the plan's utilization.
 *To be filled in after the train baseline (round 0) and the learning rounds, and before any
 TEST episode. Commit this section before running `evaluate`.*
 
-- Prediction (direction and size of C − B at pass^1, per domain):
-- Kill criterion (what result means the catalog does not help, e.g. the 95% CI of C − B
-  includes 0 on every domain, or C − D < 0):
-- Domains, k, and user-simulator model actually used:
-- Date and commit of this entry:
+**DRAFT, awaiting the reviewer's agreement. No TEST episode has been run.**
+
+The learning rounds were run on telecom only (`tel-h`, `tel-hr`, `tel-o`; results in §14).
+
+**Arms.** All arms run in one interleaved `evaluate` run: arm by arm within each task, so drift falls on every arm equally.
+
+| arm | catalog | how it got there |
+|---|---|---|
+| A | no OBS | plain Haiku with the tau2 prompt |
+| B | OBS, empty | also stands for **gate-only Haiku**, whose final catalog is empty (§14) |
+| C:auto | Haiku's round-1 batch as written: `use-device-tools-not-manual-steps@v1` + `data-limit-refuel-check@v1` | **auto-approval**: the agent's own proposals go live with no gate and no review. Only the leakage screen applies, because it protects the test set. |
+| C:rev | `tel-hr` final: the reviewer's edit `use-device-tools-not-manual-steps@v2` + `data-limit-refuel-check@v1` | **human review + gate** |
+| C:orev | `tel-or` final (training run in progress) | **model review + gate**: Opus 5.5 in the reviewer's seat for Haiku's proposals, with the same inputs and the same gate |
+| C:opus | `tel-o` final: `always-check-data-limit-on-data-issues@v1` + `customer-runs-device-checks-no-early-transfer@v1` | **stronger skill writer + gate** |
+
+- **Arm D is not run.** Every promoted item that matters here is a guardrail, and guardrails are already inlined in `agent_startup`. So C − D would mostly measure tool overhead. It's left for a follow-up.
+- **The `C:auto` catalog** is built from `runs/tel-h/learn/rounds/r1/improver_output.json`, exactly as written. Its items are promoted with `by=study:auto-approve` into a fresh data dir.
+
+**Setup.**
+- Telecom TEST: 40 tasks, k = 4 trials per task per arm, so 6 arms × 160 = 960 episodes.
+- Agent: `claude-haiku-5-5`, effort medium. User simulator: `claude-sonnet-5-5`, effort medium.
+  - The simulator is the same as in training. It differs from §6's default (Haiku), which was changed before the learning runs.
+- Concurrency 4, so each task's 4 trials run in one wave. `--stop-at-utilization 0.7`.
+
+**Primary comparisons** (pass^1, paired over tasks, 95% bootstrap CI as in §9):
+1. **C:rev − B**: what human review adds over gate-only, for Haiku-written skills.
+2. **C:auto − B**: what auto-approval does.
+3. **C:orev − B**: what a model reviewer adds over gate-only, for the same Haiku proposals.
+4. **C:opus − B**: what a stronger skill writer does, with gate-only approval.
+
+Secondary:
+- C:rev − C:auto: review against auto-approval of the same round-1 proposals.
+- C:rev − C:orev: human (AI-assisted) review against AI review alone.
+- C:opus − C:rev.
+- B − A.
+- pass^4 for every arm.
+
+**Predictions,** from the train results (no-skills re-measures 0.676–0.712; C:auto set 0.360; C:rev set 0.896 and 0.932; C:opus set 0.977 and 0.973). The test tasks are new, so some shrinkage is expected.
+
+| comparison | expected pass^1 difference |
+|---|---|
+| C:rev − B | about +0.15 (somewhere in +0.05 to +0.25); CI above 0 |
+| C:auto − B | about −0.25 (somewhere in −0.40 to −0.10); CI below 0 |
+| C:orev − B | about +0.15 (somewhere in +0.05 to +0.25); CI above 0, if Opus rejects or fixes the device-tools premise as the human review did |
+| C:opus − B | about +0.20 (somewhere in +0.10 to +0.30); CI above 0 |
+| C:opus − C:rev | positive but small; CI may include 0 |
+| B − A | within ±0.05 |
+
+**Kill criteria** (decided now, reported whatever happens):
+- **Skills don't transfer:** if the 95% CIs of C:rev − B, C:orev − B and C:opus − B all include 0 or lie below it, the learned catalogs did not carry over to held-out tasks. The report says so.
+- **Auto-approval isn't harmful on held-out tasks:** if the CI of C:auto − B includes 0 or lies above it, the train-split harm did not generalize. The governance claim is then limited to the train split.
+- **Review adds nothing:** if C:rev − C:auto has a CI that includes 0, review made no difference on held-out tasks.
+
+Every catalog item passed the leakage screen when it was proposed. The reviewer's edits were screened by hand with the same screen.
+
+- Date and commit of this entry: (filled in when agreed)
 
 ## 14. Governance observations (for the report)
 
@@ -377,3 +428,24 @@ human seat.
 
 - Both runs that promoted anything did so in round 1 and then hit the ceiling. Their later candidates gained 1.8 to 2.3 points, under floors of 5.8 to 6.9.
 - Gate-only Haiku wrote the same wrong premise (the agent operates the customer's phone) in all three rounds. The gate kept it out, but nothing useful got in either.
+
+### Model-reviewed arm (`tel-or`), set up 2026-11-24 late evening
+
+- **Design:** `learn --seed-from tel-h --reviewer-model claude-opus-5-5`. It is the same as `tel-hr`, except that Opus 5.5 takes the reviewer's seat (`tau2_skills/reviewer.py`).
+  - Each round it sees the proposals that passed the screens, the proposer's hypotheses, the policy (main policy plus tech-support manual), the agent's 13 tools and the customer's 30 tools, the current catalog and the edit log.
+  - It doesn't see transcripts or any TEST data.
+  - Edits are leakage-screened automatically. An edit that trips the screen becomes a reject.
+  - Promotions are recorded as `model:claude-opus-5-5+study:gate`.
+- **Caveat on the human-reviewed arm.** The reviewer's reviews in `tel-hr` were assisted by Claude Opus 5.5, the coding assistant running this study.
+  - In round 1 the assistant pointed out that the device tools belong to the customer and drafted the replacement guardrail text.
+  - In round 3 it checked the checklist against the manual and drafted the two fixes.
+  - The reviewer chose each decision from options the assistant laid out. `tel-hr` is therefore "human + AI-assisted review", not unaided human review.
+  - `tel-or` measures the AI reviewer alone. The difference between the two catalogs on TEST shows what the human decision added.
+- **`tel-or` round 1: the model reviewer edited both proposals.** These decisions were recorded before the gate's result was known.
+  - **`use-device-tools-not-manual-steps`, edited:** "The body wrongly says the device tools belong to the agent. They are customer-side tools."
+    - This is the same flaw the human-assisted review caught. It was rewritten as "guide the customer through their device tools" and lists the customer's check and fix tools by name.
+  - **`data-limit-refuel-check`, edited.** The human-assisted review had approved this one as written. Opus found two problems:
+    - Its last line has the agent "use `can_send_mms` to confirm", but that's a customer tool.
+    - It offers a plan change, but the agent's 13 tools can't apply one.
+    - The rewrite drops the plan-change option, states the 2GB refuel cap, and has the customer re-check on their own device.
+  - **Note for the report:** the reviewer was given which tools belong to the agent and which to the customer, which any product reviewer would have from the agent's tool manifest. That list is what makes the device-tools misreading detectable. The improver saw only the policy and the transcripts.
