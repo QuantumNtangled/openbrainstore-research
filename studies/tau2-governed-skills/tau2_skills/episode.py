@@ -35,6 +35,7 @@ class ArmSetup:
     obs_dir: Path | None = None        # OBS data dir; None = no OBS tools
     obs_tools: tuple = ("agent_startup", "get_skill")
     skills_md: str | None = None       # arm D: promoted skill text in the prompt
+    agent_model: str | None = None     # this arm's agent model, when it differs from --agent-model
     obs_url: str | None = None         # hosted OBS instead of a local data dir
     obs_key_env: str = "OBS_AGENT_KEY"  # env var holding the hosted agent key
 

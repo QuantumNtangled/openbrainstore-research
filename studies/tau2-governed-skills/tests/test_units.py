@@ -97,3 +97,27 @@ def test_hosted_obs_never_holds_the_key():
         "obs-study-slot-3", "s3-data-limit-refuel-check")
     a = {"kind": "guardrail", "title": "T", "when_to_use": "W", "body": "B"}
     assert _fingerprint(a) == _fingerprint(dict(a)) != _fingerprint({**a, "body": "B2"})
+
+
+def test_arm_model_overrides_the_agent_model():
+    """--arm-model: one interleaved run can put different agent models in different arms."""
+    from argparse import Namespace
+
+    from tau2_skills.claude_cli import ClaudeConfig
+    from tau2_skills.episode import ArmSetup
+    from tau2_skills.evaluate import parse_arm_models
+    from tau2_skills.harness import Harness
+
+    arms = ["B", "C-big", "C-small"]              # as parse_arms gives them
+    assert parse_arm_models(["C:small=claude-haiku-5-5"], arms) == {"C-small": "claude-haiku-5-5"}
+    for bad in (["C:nope=x"], ["C:small"], ["C:small="]):
+        with pytest.raises(SystemExit):
+            parse_arm_models(bad, arms)
+    base = ClaudeConfig(cmd=["claude"], model="claude-opus-5-5")
+    h = Harness(args=Namespace(domain="telecom", fake_claude=False), run_dir=Path("."), agent_cfg=base,
+                user_cfg=base, improver_cfg=base, budget=None, pacer=None, workdir=Path("."))
+    out = Path("x") / "t__t0.json"
+    small = h.make_ctx_factory(ArmSetup("C-small", agent_model="claude-haiku-5-5"))(None, 0, out, Path("."))
+    big = h.make_ctx_factory(ArmSetup("B"))(None, 0, out, Path("."))
+    assert small.agent_cfg.model == "claude-haiku-5-5" and big.agent_cfg.model == "claude-opus-5-5"
+    assert small.agent_cfg.effort == base.effort and base.model == "claude-opus-5-5"   # a copy

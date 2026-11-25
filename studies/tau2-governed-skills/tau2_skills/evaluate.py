@@ -98,6 +98,18 @@ def prepare_arm(key: str, edir: Path, catalog: "ObsStore | None", recall: bool) 
     return ArmSetup(key, skills_md=path.read_text(encoding="utf-8"))
 
 
+def parse_arm_models(values, arms: list[str]) -> dict[str, str]:
+    """--arm-model ARM=MODEL values -> {arm key: model}."""
+    out = {}
+    for v in values or []:
+        arm, sep, model = v.partition("=")
+        key = arm_key(arm.strip()) if sep else ""
+        if not sep or not model.strip() or key not in arms:
+            raise SystemExit(f"--arm-model {v!r}: give ARM=MODEL for an arm listed in --arms")
+        out[key] = model.strip()
+    return out
+
+
 def hosted_state_path(args) -> Path:
     from urllib.parse import urlparse
     return Path(args.runs_dir) / f"hosted_slots.{urlparse(args.obs_url).netloc.replace(':', '_')}.json"
@@ -170,6 +182,7 @@ def cmd_evaluate(args) -> None:
     test = load_split_tasks(args.domain, "test", limit=args.test_limit, seed=args.sample_seed,
                             only=args.task_ids)
 
+    arm_models = parse_arm_models(getattr(args, "arm_model", None), arms)
     served = {}
     if hosted:
         setups, served = hosted_arms(arms, args, catalogs, edir, own)
@@ -177,6 +190,9 @@ def cmd_evaluate(args) -> None:
     else:
         setups = {a: prepare_arm(a, edir, catalogs.get(a[2:]) if a[0] in "CD" else None, args.recall)
                   for a in arms}
+
+    for a, model in arm_models.items():
+        setups[a].agent_model = model
 
     if args.arm_order == "interleave":
         # one arm after another per task keeps time-of-day and rate-limit effects balanced
@@ -189,6 +205,8 @@ def cmd_evaluate(args) -> None:
     extra = {"catalog": snaps[""] if set(snaps) == {""} else snaps, "claude_invocations": h.budget.n}
     if hosted:
         extra["hosted"] = {"url": args.obs_url, "arms": served}
+    if arm_models:
+        extra["arm_models"] = arm_models
     write_summary(args.run, h.run_dir, arms, args.k, extra=extra)
 
 
@@ -237,7 +255,9 @@ def render_md(s: dict) -> str:
     k = s["k"]
     lines = [f"# {s['run']}: tau2-bench {s['benchmark']['tag']} {s.get('domain') or ''} TEST, k={k}", "",
              f"Agent {s['models']['agent']} (effort {s['models']['agent_effort']}), user simulator "
-             f"{s['models']['user']} (effort {s['models']['user_effort']}). Grading: {s['benchmark']['grading']}.",
+             f"{s['models']['user']} (effort {s['models']['user_effort']}). Grading: {s['benchmark']['grading']}."
+             + ("" if not s.get("arm_models") else " Per-arm agent models: "
+                + ", ".join(f"{a} = {m}" for a, m in s["arm_models"].items()) + "."),
              "", f"| arm | tasks | episodes | pass^1 [95% CI] | pass^{k} [95% CI] | infra err | "
                  "startup rate | get_skill rate | API-eq $ total | $ / episode |",
              "|---|---|---|---|---|---|---|---|---|---|"]

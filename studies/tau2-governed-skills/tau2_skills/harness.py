@@ -4,7 +4,7 @@ per-episode context factory used by both the learning loop and the evaluation.""
 import argparse
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .claude_cli import ClaudeConfig, InvocationBudget, find_claude
@@ -59,9 +59,11 @@ class Harness:
     workdir: Path
 
     def make_ctx_factory(self, arm: ArmSetup, extra: dict | None = None, seed_base: int = 0):
+        agent_cfg = replace(self.agent_cfg, model=arm.agent_model) if arm.agent_model else self.agent_cfg
+
         def make(task, trial, out_path, log_dir):
             return EpisodeContext(
-                domain=self.args.domain, task=task, trial=trial, arm=arm, agent_cfg=self.agent_cfg,
+                domain=self.args.domain, task=task, trial=trial, arm=arm, agent_cfg=agent_cfg,
                 user_cfg=self.user_cfg, out_path=out_path, log_dir=log_dir,
                 workdir=self.workdir / safe_name(f"{out_path.parent.name}-{out_path.stem}", 48),
                 budget=self.budget, seed=seed_base + trial, extra=dict(extra or {}),

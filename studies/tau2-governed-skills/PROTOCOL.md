@@ -566,3 +566,61 @@ human seat.
   - The model reviewer caught the fatal device-tools premise in round 1, as the AI-assisted human review did.
   - It also caught three further errors that would otherwise have reached the gate: two in round 1 and the VPN contradiction in round 3. Under gate-only promotion, a proposal like the VPN guardrail could pass the gate whenever it doesn't cost enough train points. It would then sit in the catalog contradicting policy.
   - Whether these catalogs differ on held-out tasks is for the TEST evaluation (§13).
+
+## 15. Follow-up: Opus as the agent (TEST), pre-registration
+
+**DRAFT, awaiting agreement. No episode of this run has been started.**
+
+**Why.** The post-hoc cost analysis (§13) estimated that Opus as the agent would cost about 33 times Haiku with Opus-written skills. That estimate prices Haiku's token counts at Opus rates. This run measures Opus's success rate and token cost directly, and puts Haiku with Opus's skills next to it in the same interleaved run, so the comparison doesn't cross runs or days.
+
+**Arms.** All three run in one interleaved `evaluate` run (`--run tel-test-opus`), arm by arm within each task.
+
+| arm | agent | catalog | stands for |
+|---|---|---|---|
+| B | `claude-opus-5-5` | OBS connected, empty | Opus alone |
+| C:opus | `claude-opus-5-5` | `tel-o` final: `always-check-data-limit-on-data-issues@v1` + `customer-runs-device-checks-no-early-transfer@v1` | Opus with the skills it wrote |
+| C:small | `claude-haiku-5-5` (via `--arm-model`) | the same `tel-o` catalog | Haiku with Opus's skills, re-measured alongside the Opus arms |
+
+- These are the skills `tel-o` learned with Haiku as the agent. Opus uses them as they are; nothing is re-learned for Opus.
+- B here is Opus with an empty catalog, not the Haiku baseline of `tel-test`.
+
+**Setup.**
+- Telecom TEST: 40 tasks, k = 3, so 3 arms × 120 = 360 episodes.
+- Agent effort medium for both models. User simulator `claude-sonnet-5-5`, effort medium, as in every other run. Concurrency 3, `--stop-at-utilization 0.7`.
+- Command:
+
+  ```
+  python -m tau2_skills evaluate --run tel-test-opus --domain telecom --agent-model claude-opus-5-5 --catalog opus=runs/tel-o/learn/obs --catalog small=runs/tel-o/learn/obs --arms B,C:opus,C:small --arm-model C:small=claude-haiku-5-5 --k 3 --user-model claude-sonnet-5-5 --concurrency 3 --stop-at-utilization 0.7 --max-invocations 1400 --max-run-usd 120
+  ```
+
+- Expected usage, API-equivalent: about $60 for the Opus agent (240 episodes at about $0.25), under $1 for Haiku and about $14 for the simulated customer, so about $75.
+
+**Primary comparisons** (pass^1, paired over the 40 tasks, 95% bootstrap CI as in §9):
+1. **C:small − B**: Haiku with Opus's skills against Opus alone. This is the cost question.
+2. **C:opus − B**: what the skills add for the model that wrote them.
+
+Secondary:
+- C:opus − C:small.
+- pass^3 for each arm.
+- The agent's measured token cost per conversation and per solved conversation, for each arm. This uses `tools/agent_cost.py`, which counts the agent only, at the §13 prices.
+- C:small against `tel-test`'s C:opus (0.983): a cross-run replication.
+
+**Predictions:**
+
+| quantity | expected |
+|---|---|
+| pass^1 of B (Opus alone) | about 0.90 (0.80 to 0.97) |
+| C:opus − B | about +0.05 (−0.02 to +0.12); CI may include 0 |
+| C:small − B | about +0.05 (−0.05 to +0.12) |
+| pass^1 of C:small | 0.93 to 1.00 |
+| measured agent cost, Opus arms ÷ C:small | about 30× (20× to 40×) |
+
+**Decision rules** (decided now, reported whatever happens):
+- **Parity.**
+  - If the lower end of the 95% CI of C:small − B is above −0.05, Haiku with Opus's skills does at least as well as Opus alone, within 5 points, at the measured cost ratio. The report then states the cost saving as measured.
+  - If the lower end is at or below −0.05, the report gives the measured gap and compares cost per solved conversation instead.
+- **Skills help the writer too:** if the CI of C:opus − B lies above 0, the skills help even the model that wrote them.
+- **Replication:** if C:small lands more than 0.07 below `tel-test`'s 0.983, the report flags run-to-run drift and gives both numbers.
+- **Cost:** the measured ratio replaces the §13 estimate in the report, whichever way it falls.
+
+- Date and commit of this entry: (filled in when agreed)

@@ -65,6 +65,9 @@ def main() -> None:
                          "C:NAME and D:NAME use catalog NAME, and plain C/D use the unnamed one")
     sp.add_argument("--recall", action="store_true", help="also offer OBS recall in arms B and C")
     sp.add_argument("--arm-order", default="interleave", choices=["interleave", "sequential"])
+    sp.add_argument("--arm-model", action="append", default=None, metavar="ARM=MODEL",
+                    help="run this arm's agent on another model than --agent-model, e.g. "
+                         "C:small=claude-haiku-5-5; repeat per arm")
     hosted_args(sp)
 
     sp = sub.add_parser("summarize", help="rebuild results/<run>/summary.* from episode files")
