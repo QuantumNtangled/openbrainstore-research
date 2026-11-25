@@ -190,7 +190,7 @@ is revealed to the improver).
 
 ## 11. Usage and API-equivalent cost
 
-The runs use the reviewer's Claude subscription, so dollars below are **API-equivalent** (what the same
+The runs use a Claude subscription, so dollars below are **API-equivalent** (what the same
 tokens would cost on the API at Haiku 5.5's $0.10 / $0.50 per million input/output tokens for
 prompts ≤100K tokens, cache reads 0.1×, Claude Code's 1-hour cache writes 2×; Sonnet 5.5
 $2 / $10, cache reads 0.05×). The harness computes this from each session's cumulative
@@ -247,7 +247,7 @@ to measure how much one episode moves the plan's utilization.
 - **Utilization stop.** Claude Code emits `rate_limit_event`s with each window's utilization
   (the smoke runs saw the 7-day window at 5%). The harness logs them to
   `runs/<run>/pacing.jsonl` and stops starting new episodes once any window reaches
-  `--stop-at-utilization` (default 0.9; use 0.7–0.8 to leave room for the reviewer's own work).
+  `--stop-at-utilization` (default 0.9; use 0.7–0.8 to leave room for your own work).
 - **Hard caps.** `--max-invocations` counts every claude process across restarts
   (`claude_invocations.jsonl`); `--max-run-usd` stops on API-equivalent spend across restarts.
 - **Billing guard.** If a session's `init` event reports an `apiKeySource` other than `none`
@@ -441,7 +441,7 @@ human seat.
   - It doesn't see transcripts or any TEST data.
   - Edits are leakage-screened automatically. An edit that trips the screen becomes a reject.
   - Promotions are recorded as `model:claude-opus-5-5+study:gate`.
-- **Caveat on the human-reviewed arm.** The reviewer's reviews in `tel-hr` were assisted by Claude Opus 5.5, the coding assistant running this study.
+- **Caveat on the human-reviewed arm.** The human reviewer works at OpenBrainStore and has no background in telecom support. Their decisions in `tel-hr` were assisted by Claude Opus 5.5, the coding assistant running this study.
   - In round 1 the assistant pointed out that the device tools belong to the customer and drafted the replacement guardrail text.
   - In round 3 it checked the checklist against the manual and drafted the two fixes.
   - The reviewer chose each decision from options the assistant laid out. `tel-hr` is therefore "human + AI-assisted review", not unaided human review.
